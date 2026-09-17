@@ -852,3 +852,28 @@
 				}
 			}
 		
+
+#day-12{--accent:#895477}.reschedule-section{border-top:1px solid var(--line);margin-top:35px}.reschedule-section>.places{margin-top:25px}.reschedule-section>p{max-width:800px}@media(prefers-color-scheme:dark){#day-12{--accent:#dfaad4}}
+
+
+.people-lanes{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}.person-lane{padding:24px;border:1px solid var(--line);border-radius:20px}.person-lane>h3{font-size:1.7rem;margin:0 0 25px}.girls-lane{background:rgba(173,100,150,.07)}.nic-lane{background:rgba(61,120,126,.07)}.person-lane .places{grid-template-columns:1fr}.person-lane .moment{padding-left:0}.person-lane .moment:before{display:none}@media(max-width:850px){.people-lanes{grid-template-columns:1fr}.person-lane{padding:18px}}@media(prefers-color-scheme:dark){.girls-lane{background:rgba(223,170,212,.08)}.nic-lane{background:rgba(145,200,206,.08)}}
+
+
+/* Two independent, full-day itineraries. */
+#day-12 .timeline{border:0;margin:0;padding:0}
+#day-12 .people-lanes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}
+#day-12 .person-lane{min-width:0;padding:24px;border:2px solid var(--lane-border);border-radius:18px;background:var(--lane-bg)}
+#day-12 .girls-lane{--lane-border:#a36d96;--lane-bg:#f8f0f6;--accent:#895477}
+#day-12 .nic-lane{--lane-border:#6087ad;--lane-bg:#edf3f8;--accent:#396386}
+#day-12 .person-lane>h3{font:700 26px/1.2 system-ui,sans-serif;margin:0;padding-bottom:12px}
+#day-12 .lane-route{font-size:14px;color:var(--muted);margin:0 0 28px;padding-bottom:18px;border-bottom:1px solid var(--lane-border)}
+#day-12 .places{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+#day-12 .moment{padding:0 0 30px}
+#day-12 .moment:before{display:none}
+#day-12 .moment h3{font-size:25px}
+#day-12 .place-content{padding:20px}
+#day-12 .place h4{font-size:23px}
+#day-12 .stop-photo .photo{height:180px}
+#day-12 .split-guide{margin:0 0 24px;font-size:16px;color:var(--muted)}
+@media(prefers-color-scheme:dark){#day-12 .girls-lane{--lane-border:#875c83;--lane-bg:#211c27;--accent:#dfaad4}#day-12 .nic-lane{--lane-border:#496d95;--lane-bg:#17232e;--accent:#a5c8ec}}
+@media(max-width:640px){#day-12 .people-lanes{grid-template-columns:minmax(0,1fr)}#day-12 .person-lane{padding:18px}#day-12 .split-guide .desktop-guide{display:none}}
