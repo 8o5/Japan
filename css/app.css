@@ -483,6 +483,7 @@ mark.upd-t{background:var(--upd-bg);color:inherit;border-radius:4px;padding:0 2p
 
 /* Jarvis in-app prompt (iOS-style alert) */
 .msg-pop{border:0;padding:0;margin:auto;width:min(270px,calc(100% - 48px));background:transparent;color:var(--ink);max-width:none}
+.msg-pop:focus,.msg-pop:focus-visible{outline:none}
 .msg-pop::backdrop{background:rgba(20,12,6,.45);-webkit-backdrop-filter:saturate(160%) blur(10px);backdrop-filter:saturate(160%) blur(10px)}
 .msg-pop[open]{animation:msgpop .42s var(--spring)}
 @keyframes msgpop{from{transform:scale(.82);opacity:0}to{transform:none;opacity:1}}
