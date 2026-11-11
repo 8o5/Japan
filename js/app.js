@@ -730,8 +730,10 @@
     });
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
       window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
-      var swOnce = false;
-      navigator.serviceWorker.addEventListener('controllerchange', function () { if (swOnce) return; swOnce = true; location.reload(); });
+      // Reload only when a NEW version replaces one that already controlled this page. The first install
+      // has nothing stale to replace, and reloading then used to drop a tapped setup link.
+      var swOnce = false, hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener('controllerchange', function () { if (swOnce || !hadController) return; swOnce = true; location.reload(); });
     }
   }
   boot();

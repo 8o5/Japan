@@ -16,13 +16,30 @@ const SHELL_MODE = CFG.dataSource === 'firestore';
 /* 1. Take a setup link (and a Jarvis message deep link) off the URL immediately
       so they never reach a server or the day router. */
 let pendingLink = null, pendingMsg = null;
-(function takeHash() {
+/* A tapped setup link must survive the one-time reload when the service worker first takes over
+   (and an app-switch in a Safari tab), so it is parked in sessionStorage (this tab only, cleared when
+   the tab closes) until it is used or rejected. Never put back in the URL. */
+const JOIN_KEY = 'jp27.pendingJoin', JOIN_TTL = 15 * 60e3;
+function setPendingLink(v) {
+  pendingLink = v || null;
+  try { if (pendingLink) sessionStorage.setItem(JOIN_KEY, JSON.stringify({ v: pendingLink, t: Date.now() })); else sessionStorage.removeItem(JOIN_KEY); } catch (e) {}
+}
+function takeHash() {
   const h = location.hash;
-  if (/(?:^#|&)join=/i.test(h)) pendingLink = decodeURIComponent(h.slice(h.search(/join=/i)));
+  let found = false;
+  if (/(?:^#|&)join=/i.test(h)) { setPendingLink(decodeURIComponent(h.slice(h.search(/join=/i)))); found = true; }
   const mm = h.match(/(?:^#|&)msg=([^&]+)/i);
-  if (mm) pendingMsg = decodeURIComponent(mm[1]);
-  if (pendingLink || pendingMsg) history.replaceState(null, '', location.pathname + location.search);
-})();
+  if (mm) { pendingMsg = decodeURIComponent(mm[1]); found = true; }
+  if (found) history.replaceState(null, '', location.pathname + location.search);
+  return found;
+}
+takeHash();
+if (!pendingLink) {
+  try {
+    const j = JSON.parse(sessionStorage.getItem(JOIN_KEY) || 'null');
+    if (j && j.v && Date.now() - j.t < JOIN_TTL) pendingLink = j.v; else sessionStorage.removeItem(JOIN_KEY);
+  } catch (e) {}
+}
 const includeTestMsgs = /(?:^|[?&])qa(?:=|&|$)/.test(location.search);
 
 const S = {
@@ -131,8 +148,8 @@ const JOIN_ERR = {
 function tryParse(text, person) { try { return S.live ? S.live.parseCode(text, person) : null; } catch (e) { return { error: e.code || 'bad-code' }; } }
 function handlePendingLink() {
   const p = tryParse(pendingLink);
-  if (p && p.error) { openSheet({ error: JOIN_ERR[p.error] || JOIN_ERR['bad-code'] }); return; }
-  if (p && S.who && p.who === S.who && S.whoVerified) { pendingLink = null; return; }   // already linked: nothing to do
+  if (p && p.error) { setPendingLink(null); openSheet({ error: JOIN_ERR[p.error] || JOIN_ERR['bad-code'] }); return; }
+  if (p && S.who && p.who === S.who && S.whoVerified) { setPendingLink(null); return; }   // already linked: nothing to do
   if (IOS && !STANDALONE) { openSheet({ code: pendingLink }); return; }                  // never join inside an iPhone Safari tab
   doLink(pendingLink);
 }
@@ -141,10 +158,11 @@ async function doLink(text, person) {
   S.busy = true; openSheet({ code: text, note: 'Linking…' });
   try {
     await withTimeout(S.live.joinFromText(text, person), 20000, 'timeout');
-    S.busy = false; pendingLink = null; startWatches(); if (SHELL_MODE) provideTrip();
+    S.busy = false; setPendingLink(null); startWatches(); if (SHELL_MODE) provideTrip();
     fillSheet({ done: true });
   } catch (e) {
     S.busy = false;
+    if ((e.code === 'bad-code' || e.code === 'code-cut-off') && text === pendingLink) setPendingLink(null);
     fillSheet({ code: text, error: JOIN_ERR[e.code] || JOIN_ERR['bad-code'], needPerson: e.code === 'need-person' });
   } finally { S.busy = false; rerender(); }
 }
@@ -372,6 +390,12 @@ function takeMsgId(id) {
   showPendingMsg();
 }
 window.addEventListener('hashchange', () => {
+  if (/(?:^#|&)join=/i.test(location.hash)) {   // setup link tapped while the app/tab is already open
+    takeHash();
+    if (S.live && pendingLink) handlePendingLink();
+    if (pendingMsg) showPendingMsg();
+    return;
+  }
   const mm = location.hash.match(/(?:^#|&)msg=([^&]+)/i);
   if (!mm) return;
   const cleaned = location.hash.replace(/[?&]?msg=[^&]+/i, '').replace(/^#&/, '#').replace(/^#$/, '');
