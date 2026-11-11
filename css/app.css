@@ -506,3 +506,84 @@ mark.upd-t{background:var(--upd-bg);color:inherit;border-radius:4px;padding:0 2p
 .plan-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media (min-width:760px){ .plan-toast{bottom:24px} }
 @media (prefers-reduced-motion:reduce){ .plan-toast{transition:opacity .2s} .plan-toast.show{transform:translateX(-50%)} }
+
+/* ---------- readability pass (Nov 11): more air, icons, one fact per line ---------- */
+.ic{display:inline-block;margin-right:.4em;font-style:normal;line-height:1;font-size:.95em;vertical-align:-.04em}
+.tl{gap:18px}
+.blk{margin-top:56px}
+.blk-h{margin-bottom:18px}
+.d-title{font-size:clamp(32px,8vw,60px)}
+.d-start{font-size:18px}
+.d-start2{font-size:15.5px;line-height:1.5;margin-top:10px;max-width:40em}
+.glance{gap:8px;margin-top:20px}
+.glance li{font-size:14px;padding:7px 12px}
+.glance-n{margin:12px 2px 0;font-size:13.5px;line-height:1.5;color:var(--ink-3);max-width:44em}
+/* stop cards */
+.stop{padding:18px 20px 14px}
+.stop.row{padding:15px 18px 12px}
+.s-name{font-size:19px}
+.s-what{margin-top:4px;font-size:14px;line-height:1.35}
+.s-what .upd{margin-left:4px;vertical-align:1px;font-size:10.5px;padding:2px 7px}
+.st{font-size:12px;padding:6px 10px 6px 8px}
+.st .ic{margin-right:.3em}
+.st-walkin{background:transparent;color:var(--ink-3);padding-inline:0}
+.s-act{margin-top:10px;font-size:15.5px;line-height:1.45}
+.fls{display:grid;gap:12px;margin:14px 0 0;padding:12px 14px;border-radius:14px;background:var(--canvas-2)}
+.fl{display:block;margin:0;font-size:15px;line-height:1.45}
+.fl-k,.fl-diet .fl-k,.fl-alert .fl-k,.fl-act .fl-k,.fl-deadline .fl-k,.fl-time .fl-k,.fl-ok .fl-k,.fl-access .fl-k{display:block;width:max-content;margin:0 0 2px;padding:0;background:none;font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--ink-3)}
+.fl-diet .fl-k,.fl-alert .fl-k{color:var(--alert)}
+.fl-act .fl-k,.fl-deadline .fl-k,.fl-time .fl-k{color:var(--amber)}
+.fl-ok .fl-k{color:var(--ok)}
+.fl-access .fl-k{color:var(--ink)}
+.fl-info .fl-t{color:var(--ink-2)}
+.fl .ic{font-size:13px;letter-spacing:0}
+.s-get{margin-top:12px;font-size:15px;line-height:1.45}
+.s-get b{margin-right:4px}
+.s-meta{margin-top:10px;font-size:14px;color:var(--ink-3)}
+.s-links{margin-top:14px}
+.lk{font-size:14.5px;padding:0 15px}
+.more{margin-top:12px}
+.more>summary{font-size:14.5px;color:var(--ink-3);font-weight:600}
+.more[open]>summary{color:var(--accent)}
+/* routes: lead line, then one step per line */
+.it.route-it .it-t{font-weight:700}
+.it-t .ic{margin-right:.3em}
+.leg{padding:14px 16px 14px 16px;border-left-width:4px}
+.leg-t{margin:0;font-size:15.5px;line-height:1.45}
+.leg-h{font-weight:600;color:var(--ink)}
+.steps{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:7px}
+.steps li{position:relative;padding-left:18px;font-size:15px;line-height:1.42;color:var(--ink)}
+.steps li::before{content:"";position:absolute;left:3px;top:.55em;width:6px;height:6px;border-radius:50%;background:var(--indigo);opacity:.75}
+.steps li.alt{color:var(--ink-2)}
+.steps li.alt::before{content:"↪";width:auto;height:auto;background:none;top:0;left:0;font-size:13px;color:var(--ink-3);opacity:1}
+.rail-d{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.walk{font-size:14px;color:var(--ink-3)}
+.walk .ic{font-size:13px}
+/* notices */
+.nt{padding:16px 18px;font-size:15.5px}
+.nt-k{display:flex;align-items:center;gap:2px;margin-bottom:6px;font-size:11.5px}
+.nt-h{font-weight:600}
+.nt .steps{margin-top:8px}
+.nt .steps li::before{background:currentColor;opacity:.35}
+.nt-warn .steps li::before{background:var(--amber);opacity:.7}
+.nt-plan .steps li::before{background:var(--alert);opacity:.6}
+/* now card */
+.leave small{font-size:12.5px}
+.now-m .w-act .btn{padding:0 14px;font-size:14px}
+.dl-w .ic{font-size:12px}
+/* panels */
+.cf-k .ic,.bk-when .ic{font-size:13px}
+.bk{padding:14px 18px 10px 8px}
+.bk-when{font-size:13px}
+.bk-what{font-size:17.5px}
+@media (max-width:520px){
+  .stop{padding:16px 16px 12px}
+  .fls{padding:11px 12px;margin-inline:-2px}
+  .leg{padding:13px 14px}
+  .blk-h{font-size:24px}
+}
+.nowcard.compact{padding:16px 18px}
+.nowcard.compact .nn{gap:4px}
+.nowcard.compact .nn-n{font-size:16px}
+.nowcard.compact .w-act{margin-top:8px}
+.nt-k .upd{text-transform:none;letter-spacing:.02em;margin-left:8px}

@@ -52,6 +52,33 @@
     return '<span class="upd" title="' + esc(o._upd.map(function (x) { return x.reason; }).join(' · ')) + '">' + esc(lbl) + '</span>';
   }
 
+  /* ---------------- readability helpers (presentation only — never change planner words) ---------------- */
+  // Split planner HTML on " · " into steps without breaking a tag pair (e.g. <b>…</b> spanning a dot).
+  function splitDots(html) {
+    var parts = String(html || '').split(' · '), out = [], acc = null;
+    function open(s) { return (s.match(/<[a-z][^>]*>/gi) || []).filter(function (t) { return !/\/>$|^<br/i.test(t); }).length - (s.match(/<\/[a-z]+>/gi) || []).length; }
+    parts.forEach(function (p) {
+      acc = acc === null ? p : acc + ' · ' + p;
+      if (open(acc) <= 0) { out.push(acc); acc = null; }
+    });
+    if (acc !== null) out.push(acc);
+    return out;
+  }
+  function ic(e) { return '<span class="ic" aria-hidden="true">' + e + '</span>'; }
+  var FLAG_IC = { access: '🎟️', ok: '✅', diet: '⚠️', act: '📅', deadline: '⏰', time: '⏰', info: '💡', alert: '⚠️' };
+  var STATUS_IC = { booked: '✅', walkin: '🚶', target: '🎯', plan: '📌', moved: '↪️' };
+  var TYPE_IC = [
+    [/airport|narita|arrival formalities/i, '✈️'], [/hotel|ryokan|inn\b/i, '🏨'],
+    [/train|express|shinkansen|romancecar|bus\b|transit card/i, '🚆'],
+    [/museum|art\b/i, '🏛️'], [/tower|observation|deck|viewpoint|valley/i, '🗼'], [/shrine|temple/i, '⛩️'],
+    [/salon|spa|scalp|nail/i, '💆'], [/workshop|shoemaker|embroidery/i, '🧵'],
+    [/café|cafe|coffee|bakery|tea\b|teahouse|tea shop|ice cream|soft-serve|crêpe/i, '☕'],
+    [/restaurant|ramen|noodle|tsukemen|katsudon|yakitori|skewer|taco|steak|wagyu|food|market|dinner|counter|pancake|kaiseki/i, '🍣'],
+    [/store|shop|boutique|mall|dealer|arcade|street|maker|capsule|goods|flagship/i, '🛍️'],
+    [/evening|task|move/i, '🌙']
+  ];
+  function typeIcon(t) { for (var i = 0; i < TYPE_IC.length; i++) if (TYPE_IC[i][0].test(t || '')) return TYPE_IC[i][1]; return ''; }
+
   /* ---------------- overrides (verbatim find → replace, applied at load) ---------------- */
   var HTML_KEYS = { html: 1, more: 1, paras: 1, items: 1, notes: 1, start2: 1, title: 1, spec: 1, meta: 1, glance: 1, note: 1 };
   var OWNER_KINDS = { stop: 1, notice: 1, route: 1, nearby: 1, booking: 1, group: 1, confirmed: 1 };
@@ -268,7 +295,7 @@
     if (!list.length) return '';
     return '<section class="w" aria-label="Upcoming deadlines"><h2 class="w-h">' + esc(title || 'Coming up · booking windows') + '</h2><ul class="dl-list">' +
       list.map(function (x) {
-        return '<li class="' + (x.b.urgent || x.open ? 'urgent' : '') + '"><span class="dl-w">' + (x.open ? '<b class="dl-open">' + (/open/i.test(x.b.when || '') ? 'Open now' : 'Due now') + '</b> · ' : '') + esc(x.b.when) + '</span><span class="dl-t">' + esc(x.b.what) + '</span></li>';
+        return '<li class="' + (x.b.urgent || x.open ? 'urgent' : '') + '"><span class="dl-w">' + ic('⏰') + (x.open ? '<b class="dl-open">' + (/open/i.test(x.b.when || '') ? 'Open now' : 'Due now') + '</b> · ' : '') + esc(x.b.when) + '</span><span class="dl-t">' + esc(x.b.what) + '</span></li>';
       }).join('') + '</ul><div class="w-act"><a class="btn" href="#bookings">All bookings</a></div><p class="fine">Times as written in the planner (Pacific unless marked JST).</p></section>';
   }
 
@@ -283,7 +310,7 @@
         '<div class="nn" style="margin-top:14px"><a class="nn-i" href="#d' + DAYS[0] + '"><span class="nn-k">Then</span><span class="nn-n">' + esc(dayObj(DAYS[0]).title) + '</span><span class="nn-m">' + esc(dayObj(DAYS[0]).eyebrow) + '</span></a></div>';
       var dl = upcomingDeadlines(3);
       if (dl.length) h += '<div class="now-dl"><h3 class="w-h" style="margin-top:16px">Next booking windows</h3><ul class="dl-list">' + dl.map(function (x) {
-        return '<li class="' + (x.b.urgent || x.open ? 'urgent' : '') + '"><span class="dl-w">' + (x.open ? '<b class="dl-open">' + (/open/i.test(x.b.when || '') ? 'Open now' : 'Due now') + '</b> · ' : '') + esc(x.b.when) + '</span><span class="dl-t">' + esc(x.b.what) + '</span></li>'; }).join('') + '</ul></div>';
+        return '<li class="' + (x.b.urgent || x.open ? 'urgent' : '') + '"><span class="dl-w">' + ic('⏰') + (x.open ? '<b class="dl-open">' + (/open/i.test(x.b.when || '') ? 'Open now' : 'Due now') + '</b> · ' : '') + esc(x.b.when) + '</span><span class="dl-t">' + esc(x.b.what) + '</span></li>'; }).join('') + '</ul></div>';
       h += liveSlot() + '<div class="wx-inline"></div>';
     } else if (st.phase === 'post') {
       h += '<h2 class="w-h">Trip complete</h2><p class="now-big">おかえり</p><p class="now-sub">Japan 9–21 Jan 2027 is done. Everything stays here to look back on.</p>';
@@ -296,8 +323,8 @@
       if (!st.cur && !st.next) h += '<p class="now-sub">Nothing timed left today.</p>';
       h += '</div>';
       if (lb) {
-        h += '<div class="leave' + (lb.go ? ' go' : '') + '" role="status">' + (lb.go ? 'Start heading out' : 'Leave by about ' + esc(fmtJST(lb.leaveAt))) +
-          '<small>~' + lb.est + ' min ' + (lb.walk ? 'walk' : 'by transit') + ' · ' + lb.km.toFixed(1) + ' km straight line from ' + esc(lb.from) + ' · rough estimate, not from the planner</small></div>';
+        h += '<div class="leave' + (lb.go ? ' go' : '') + '" role="status">' + (lb.go ? '🚶 Start heading out' : '⏰ Leave by about ' + esc(fmtJST(lb.leaveAt))) +
+          '<small>~' + lb.est + ' min ' + (lb.walk ? 'walk' : 'by transit') + ' · ' + lb.km.toFixed(1) + ' km from ' + esc(lb.from) + ' · app estimate, not the planner</small></div>';
         if (lb.go && st.next) notify('lb-' + st.next.uid, 'Start heading out', st.next.stop.name + ' at ' + st.next.stop.time);
       }
       if (st.next && st.next.t - now() <= LS.get('leadMin', CFG.notifyLeadMin || 30) * 60000 && st.next.t > now()) notify('nx-' + st.next.uid, 'Next: ' + st.next.stop.name, st.next.stop.time + ' · ' + until(st.next.t));
@@ -310,6 +337,12 @@
       h += '<div class="wx-inline"></div>';
     }
     return '<section class="w nowcard" aria-label="Now and next">' + h + '</section>';
+  }
+  function compactNowHTML(st) {
+    return '<section class="w nowcard compact" aria-label="Now and next"><h2 class="w-h"><span class="live" aria-hidden="true"></span>Today · ' + esc(fmtJST(st.t)) + ' JST</h2><div class="nn">' +
+      (st.cur ? nnItem('Now', st.cur, st.day, false) : '') + (st.next ? nnItem('Next', st.next, st.nextDay, true) : '') +
+      (!st.cur && !st.next ? '<p class="now-sub">Nothing timed left today.</p>' : '') + '</div>' +
+      '<div class="w-act"><a class="btn btn-p" href="#d' + st.day + '" data-jump="' + esc((st.cur || st.next || {}).uid || '') + '">Back to today</a></div></section>';
   }
   /* js/live.js (Firebase add-on) fills this: link status, Nic/Elly locations, trip alerts. */
   function liveSlot() { var L = window.JP27_LIVE; try { return '<div class="live-slot">' + (L && L.html ? L.html() : '') + '</div>'; } catch (e) { return ''; } }
@@ -327,8 +360,9 @@
   function renderLive() {
     var html = nowHTML();
     $('#now-d').innerHTML = html;
-    $('#now-m').innerHTML = (ROUTE.view === 'day') ? html : '';
     var st = state();
+    // Phone: on a day other than today, a compact Now/Next (no location, linking or weather) so the day itself comes first.
+    $('#now-m').innerHTML = (ROUTE.view !== 'day') ? '' : (st.phase === 'trip' && ROUTE.day !== st.day) ? compactNowHTML(st) : html;
     $('#dl-d').innerHTML = st.phase === 'pre' || st.phase === 'transit' ? deadlinesHTML(6) : (st.phase === 'trip' ? deadlinesHTML(3, 'Still to do') : '');
     renderWeather();
     highlightNow();
@@ -348,7 +382,8 @@
 
   /* ---------------- rendering: day ---------------- */
   function flagsHTML(fl) {
-    return (fl || []).map(function (f) { return '<p class="fl fl-' + esc(f.kind) + '"><span class="fl-k">' + esc(f.key) + '</span><span class="fl-t">' + f.html + '</span></p>'; }).join('');
+    return (fl || []).map(function (f) {
+      return '<p class="fl fl-' + esc(f.kind) + '"><span class="fl-k">' + (FLAG_IC[f.kind] ? ic(FLAG_IC[f.kind]) : '') + esc(f.key) + '</span><span class="fl-t">' + f.html + '</span></p>'; }).join('');
   }
   function qcHTML(q) {
     var done = LS.get('qc', {});
@@ -366,14 +401,15 @@
   }
   function stopHTML(s) {
     var cls = 'stop ' + s.variant + (s.optional ? ' opt' : '') + (s.moved ? ' moved' : '');
-    var st = s.status ? '<span class="st st-' + esc(s.status.kind) + '">' + esc(s.status.text) + '</span>' : '';
+    var st = s.status ? '<span class="st st-' + esc(s.status.kind) + '">' + (STATUS_IC[s.status.kind] ? ic(STATUS_IC[s.status.kind]) : '') + esc(s.status.text) + '</span>' : '';
+    var ti = typeIcon(s.typeLabel);
     var h = '<article class="' + cls + '"><div class="s-top"><div><h3 class="s-name">' + esc(s.name) + '</h3>' +
-      (s.typeLabel ? '<p class="s-what">' + esc(s.typeLabel) + '</p>' : '') + '</div>' + st + '</div>';
-    if (s._upd) h += '<div class="s-tags">' + updTag(s) + '</div>';
+      (s.typeLabel || s._upd ? '<p class="s-what">' + (ti ? ic(ti) : '') + esc(s.typeLabel || '') + (s._upd ? ' ' + updTag(s) : '') + '</p>' : '') + '</div>' + st + '</div>';
     if (s.action) h += '<p class="s-act">' + esc(s.action) + '</p>';
-    h += flagsHTML(s.flags);
-    if (s.getThere) h += '<p class="s-get"><b>' + esc(s.getThere.label) + '</b> ' + s.getThere.html + '</p>';
-    if (s.meta && s.meta.length) h += '<p class="s-meta">' + s.meta.map(function (m) { return '<span' + (m.who ? ' class="who w-' + esc(m.who) + '"' : '') + '>' + esc(m.text) + '</span>'; }).join('') + '</p>';
+    if (s.flags && s.flags.length) h += '<div class="fls">' + flagsHTML(s.flags) + '</div>';
+    if (s.getThere) h += '<p class="s-get">' + ic('📍') + '<b>' + esc(s.getThere.label) + '</b> ' + s.getThere.html + '</p>';
+    if (s.meta && s.meta.length) h += '<p class="s-meta">' + s.meta.map(function (m) {
+      return '<span' + (m.who ? ' class="who w-' + esc(m.who) + '"' : '') + '>' + (/^Open\b|^Always open/.test(m.text) ? ic('🕘') : '') + esc(m.text) + '</span>'; }).join('') + '</p>';
     if (s.links && s.links.length) h += '<div class="s-links">' + s.links.map(function (l) {
       return '<a class="lk' + (l.primary ? ' lk-b' : '') + '" href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>'; }).join('') + '</div>';
     if (s.details && s.details.length) h += '<details class="more"><summary>Details</summary><div class="more-b">' + rowsHTML(s.details) + '</div></details>';
@@ -386,18 +422,26 @@
         l.stations.map(function (s, k) { return (k ? '<span class="arr" aria-label="to">→</span>' : '') + '<span>' + (s.code ? '<span class="code">' + esc(s.code) + '</span> ' : '') + esc(s.name) + '</span>'; }).join('') + '</span></div>';
     }).join('') + '</div>';
   }
+  /* A " · "-joined planner sentence → a lead line plus one step per line (same words, same order). */
+  function stepsHTML(html, cls, lead) {
+    var p = splitDots(html), L = lead ? ic(lead) : '';
+    if (p.length < 2) return '<p class="' + cls + '-t">' + L + html + '</p>';
+    return '<p class="' + cls + '-t ' + cls + '-h">' + L + p[0] + '</p><ul class="steps">' + p.slice(1).map(function (x) {
+      return '<li' + (/^(or|backup)\b/i.test(x.replace(/<[^>]+>/g, '')) ? ' class="alt"' : '') + '>' + x + '</li>'; }).join('') + '</ul>';
+  }
   function itemHTML(it) {
     switch (it.kind) {
       case 'stop':
         return '<div class="it rv" id="' + it._uid + '"><p class="it-t">' + esc(it.time) + '</p><div class="it-c">' + stopHTML(it) + '</div></div>';
       case 'route':
-        return '<div class="it route-it rv" id="' + it._uid + '"><p class="it-t">' + esc(it.time) + '</p><div class="it-c route">' + (it.head ? '<p class="route-h">' + esc(it.head) + '</p>' : '') +
-          it.legs.map(function (l) { return '<div class="leg"><p class="leg-t">' + l.html + '</p>' + (l.rail ? railHTML(l.rail) : '') + '</div>'; }).join('') + '</div></div>';
+        return '<div class="it route-it rv" id="' + it._uid + '"><p class="it-t">' + ic('🚆') + esc(it.time) + '</p><div class="it-c route">' + (it.head ? '<p class="route-h">' + esc(it.head) + '</p>' : '') +
+          it.legs.map(function (l) { return '<div class="leg">' + stepsHTML(l.html, 'leg') + (l.rail ? railHTML(l.rail) : '') + '</div>'; }).join('') + '</div></div>';
       case 'walk':
-        return '<div class="it"><span></span><p class="walk">' + esc(it.text) + '</p></div>';
+        return '<div class="it"><span></span><p class="walk">' + ic('🚶') + esc(it.text) + '</p></div>';
       case 'notice':
-        return '<div class="it full rv"><div class="nt nt-' + esc(it.tone) + '">' + (it.key ? '<p class="nt-k">' + esc(it.key) + '</p>' : '') + (it._upd ? '<div class="s-tags" style="margin:0 0 6px">' + updTag(it) + '</div>' : '') +
-          '<p class="nt-t">' + it.html + '</p>' + (it.more ? '<details class="more"><summary>More</summary><div class="more-b"><p class="nt-t">' + it.more + '</p></div></details>' : '') + '</div></div>';
+        var nic = { warn: '⚠️', plan: '🔁', info: '💡' }[it.tone] || '';
+        return '<div class="it full rv"><div class="nt nt-' + esc(it.tone) + '">' + (it.key ? '<p class="nt-k">' + (nic ? ic(nic) : '') + esc(it.key) + (it._upd ? ' ' + updTag(it) : '') + '</p>' : (it._upd ? '<div class="s-tags" style="margin:0 0 6px">' + updTag(it) + '</div>' : '')) +
+          stepsHTML(it.html, 'nt', it.key ? '' : nic) + (it.more ? '<details class="more"><summary>More</summary><div class="more-b"><p class="nt-t">' + it.more + '</p></div></details>' : '') + '</div></div>';
       case 'nearby':
         return '<div class="it full"><p class="nearby"><b>' + esc(it.label) + '</b>' + it.html + '</p></div>';
       case 'party':
@@ -412,7 +456,17 @@
     var h = '<header class="d-hero"><p class="d-eyebrow">' + esc(d.eyebrow) + '</p><h1 class="d-title">' + esc(d.title) + '</h1>' +
       '<p class="d-start"><span class="k">' + esc(d.start.label) + '</span>' + d.start.html + ' <span class="tz">' + esc(d.start.tz) + '</span></p>' +
       d.start2.map(function (s) { return '<p class="d-start2">' + s + '</p>'; }).join('');
-    if (d.glance) h += '<ul class="glance" aria-label="At a glance">' + d.glance.split(' · ').map(function (g) { return '<li>' + g + '</li>'; }).join('') + '</ul>';
+    if (d.glance) {
+      // short facts → chips; the long cost caveat → a quiet line under them (still visible, same words)
+      var chips = [], longs = [], money = false;
+      splitDots(d.glance).forEach(function (g) {
+        var t = g.replace(/<[^>]+>/g, '');
+        if (t.length > 48) { longs.push(g); return; }
+        var e = /^[~≈]?[¥$]/.test(t) ? (money ? '' : (money = true, '💴')) : /\d(\.\d)?\s?(mi|km)$/.test(t) ? '📍' : /^(easy|moderate|hard|steady|light|busy)/i.test(t) ? '🚶' : /loose|free\b/i.test(t) ? '⏳' : '';
+        chips.push('<li>' + (e ? ic(e) : '') + g + '</li>');
+      });
+      h += '<ul class="glance" aria-label="At a glance">' + chips.join('') + '</ul>' + longs.map(function (g) { return '<p class="glance-n">' + g + '</p>'; }).join('');
+    }
     if (d.partyFilter && d.partyFilter.length) {
       var cur = LS.get('party', 'all');
       h += '<div class="party-f" role="group" aria-label="Show">' + d.partyFilter.map(function (b) {
@@ -451,14 +505,14 @@
       else if (x.kind === 'para') h += '<p class="p-para' + (x.muted ? ' muted' : '') + '">' + x.html + '</p>';
       else if (x.kind === 'confirmed') {
         h += '<section class="cf-box"><h2>' + esc(x.heading) + '</h2><p class="muted small">' + x.note + '</p>' + x.facts.map(function (f) {
-          return '<div class="cf"><span class="cf-k">' + esc(f.key) + '</span><div class="cf-m">' + f.paras.map(function (q) { return '<p>' + q + '</p>'; }).join('') + '</div>' +
+          return '<div class="cf"><span class="cf-k">' + ic(/flight/i.test(f.key) ? '✈️' : /bed|hotel/i.test(f.key) ? '🏨' : /people/i.test(f.key) ? '👥' : '🎟️') + esc(f.key) + '</span><div class="cf-m">' + f.paras.map(function (q) { return '<p>' + q + '</p>'; }).join('') + '</div>' +
             f.more.map(function (m) { return '<details class="more"><summary>Details</summary><div class="more-b"><div class="prose">' + m + '</div></div></details>'; }).join('') + '</div>';
         }).join('') + '</section>';
       } else if (x.kind === 'booking') {
         if (!inList) { h += '<div class="bk-list">'; inList = true; }
         var on = !!done[x.key];
         h += '<div class="bk' + (x.urgent ? ' urgent' : '') + (on ? ' is-done' : '') + ' rv"><label class="bk-c"><input type="checkbox" data-bk="' + esc(x.key) + '"' + (on ? ' checked' : '') + ' aria-label="My checklist: ' + esc(x.what) + '"></label>' +
-          '<div><p class="bk-when">' + esc(x.when) + '</p><p class="bk-what">' + esc(x.what) + ' ' + updTag(x) + '</p>' + x.notes.map(function (n) { return '<p class="bk-n">' + n + '</p>'; }).join('') + '</div>' +
+          '<div><p class="bk-when">' + ic(x.urgent ? '⚠️' : '⏰') + esc(x.when) + '</p><p class="bk-what">' + esc(x.what) + ' ' + updTag(x) + '</p>' + x.notes.map(function (n) { return '<p class="bk-n">' + n + '</p>'; }).join('') + '</div>' +
           x.more.map(function (m) { return '<details class="more"><summary>Details</summary><div class="more-b"><div class="prose">' + m + '</div></div></details>'; }).join('') + '</div>';
       } else if (x.kind === 'group') {
         h += '<details class="grp rv"' + (x.open ? ' open' : '') + '><summary><span>' + x.title + '</span>' + updTag(x) + '</summary><div class="grp-b prose">' + x.html +
