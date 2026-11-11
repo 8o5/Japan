@@ -498,7 +498,7 @@ mark.upd-t{background:var(--upd-bg);color:inherit;border-radius:4px;padding:0 2p
 .msg-acts.stack button + button{border-left:0;border-top:1px solid var(--line)}
 .msg-acts button.msg-primary{font-weight:650;color:var(--accent)}
 .msg-acts button:active{background:var(--line)}
-.msg-acts button:focus-visible{outline-offset:-4px}
+.msg-acts button:focus-visible{outline:none;background:var(--canvas-2)}
 
 /* Live plan update — subtle, sits above the tab bar, doesn’t compete with Jarvis popups */
 .plan-toast{position:fixed;left:50%;bottom:calc(62px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(10px);z-index:60;background:rgba(28,22,18,.92);color:#fff;padding:10px 16px;border-radius:999px;font-size:13.5px;font-weight:600;letter-spacing:-.01em;box-shadow:var(--shadow-lift);opacity:0;pointer-events:none;transition:opacity .35s var(--ease),transform .4s var(--spring);white-space:nowrap}
