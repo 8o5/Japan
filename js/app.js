@@ -670,13 +670,14 @@
       // App-shell mode (CFG.dataSource === 'firestore'): the public site carries no itinerary; js/live.js
       // fetches it from Firestore after this phone is linked and hands it over via JP27.provideData().
       if (CFG.dataSource === 'firestore') {
-        $('#view').innerHTML = '<div class="shell-wait"><span class="sun big" aria-hidden="true"></span><h1>Japan 2027</h1><p>Link this phone to open the plan.</p><div class="live-slot" id="shell-slot"></div></div>';
+        $('#view').innerHTML = '<div class="shell-wait"><span class="sun big" aria-hidden="true"></span><h1>Japan 2027</h1><div class="live-slot" id="shell-slot"></div></div>';
         return new Promise(function (res) { window.JP27.provideData = function (d) { res([d.trip, d.overrides || [], d.places || {}]); }; if (window.JP27_LIVE && window.JP27_LIVE.refresh) window.JP27_LIVE.refresh(); });
       }
       return Promise.all([getJSON('data/trip.json'), getJSON('data/overrides.json').catch(function () { return { overrides: [] }; }), getJSON('data/places.json').catch(function () { return {}; })]);
     }).then(function (r) {
       TRIP = r[0]; OVERRIDES = Array.isArray(r[1]) ? r[1] : (r[1].overrides || []); PLACES = r[2].places || {}; CITIES = r[2].cities || {};
       applyOverrides(); indexTrip(); buildNav(); bind(); render();
+      $('#dietbtn').hidden = false; // only once a plan is loaded (app-shell mode starts without one)
       if (wxWanted()) loadWeather(); else renderWeather();
       setInterval(function () { if (MOCK) $('#mockbar').textContent = 'Mock time · JST ' + fmtJST(now()) + ' · ' + jst(now()).d + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][jst(now()).m - 1]; renderLive(); }, 30000);
       document.addEventListener('visibilitychange', function () { if (!document.hidden) renderLive(); });

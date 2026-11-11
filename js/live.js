@@ -192,7 +192,7 @@ function alertsHTML() {
 export function html() {
   let h = '<div class="lv">';
   if (!S.who) {
-    const lead = S.revoked ? 'This phone was removed or the code changed — paste the new setup link.' : 'Link this phone to see each other and get trip alerts.';
+    const lead = S.revoked ? 'This phone was removed or the code changed — paste the new setup link.' : SHELL_MODE ? 'Paste your setup link to open the plan.' : 'Link this phone to see each other and get trip alerts.';
     h += `<div class="lv-row"><div><p class="lv-k">Together</p><p class="lv-v">${lead}</p></div><div class="lv-act"><button class="btn btn-p" data-live="link">Link this phone</button></div></div>`;
   } else {
     const other = OTHER[S.who];
