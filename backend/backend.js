@@ -1,5 +1,5 @@
 // Japan 2027 · live backend (Firebase, Spark/free plan). Self-contained ES module.
-// Lazy-loads the Firebase SDK (self-hosted copy in vendor/firebase/) only when first used. API: see INTEGRATION.md.
+// Lazy-loads the Firebase SDK from gstatic only when first used. API: see INTEGRATION.md.
 import { firebaseConfig, vapidKey, SDK } from './firebase-config.js';
 
 const STALE_MIN = 10;            // location older than this → "last seen N min ago"

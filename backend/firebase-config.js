@@ -13,6 +13,6 @@ export const firebaseConfig = {
 // Project settings → Cloud Messaging → Web Push certificates. Leave '' to use
 // the Firebase SDK's built-in default key.
 export const vapidKey = '';
-// Self-hosted copy of the gstatic SDK (same version, see vendor/firebase/13.2.0/README.md) so an
+// Self-hosted copy of the gstatic SDK (same version; see vendor/firebase/13.2.0/README.md) so an
 // offline cold launch works; sw.js precaches it.
 export const SDK = new URL('../vendor/firebase/13.2.0', import.meta.url).href;

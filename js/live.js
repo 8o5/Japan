@@ -63,10 +63,13 @@ function withTimeout(p, ms, code) { return Promise.race([p, new Promise((_, rej)
 /* ---------------- start-up ---------------- */
 let watching = false;
 async function load() {
-  // Offline-first: show the plan saved on this phone right away (no network, no Firebase), then
-  // refresh it when live data arrives — Firebase start-up below can take up to 15 s on weak signal.
-  if (SHELL_MODE) giveCachedTrip();
   if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(r => { S.reg = r || null; }).catch(() => {});
+  // Offline-first: show the plan saved on this phone right away, before Firebase starts
+  // (which can take up to ~15 s on weak signal). Live data still refreshes it afterwards.
+  if (SHELL_MODE && tripFp === null) {
+    const cached = LSg('tripCache', null);
+    if (cached) { tripFp = tripFingerprint(cached); giveTrip(cached, false); }
+  }
   try {
     S.live = S.live || await withTimeout(import('../backend/backend.js'), 12000, 'timeout');
     S.live.onState(st => {
@@ -124,15 +127,9 @@ function startTripWatch() {
     giveTrip(d, changed);
   }) || (() => {});
 }
-let cacheGiven = false;
-function giveCachedTrip() {
-  if (cacheGiven) return LSg('tripCache', null);
-  const cached = LSg('tripCache', null);
-  if (cached && cached.trip) { cacheGiven = true; tripFp = tripFingerprint(cached); giveTrip(cached, false); }
-  return cached;
-}
 async function provideTrip() {
-  const cached = giveCachedTrip();
+  const cached = LSg('tripCache', null);
+  if (cached) { tripFp = tripFingerprint(cached); giveTrip(cached, false); }
   if (!S.who || !S.live) return;
   if (S.live.watchTrip) { startTripWatch(); return; }
   try {
@@ -179,7 +176,7 @@ async function unlink() {
   if (!confirm('Unlink this phone? Location sharing and alerts stop on it. You can link again with your setup link.')) return;
   try { if (S.live) await S.live.leave(); } catch (e) {}
   watching = false; S.push = null; LSs('pushOn', null); LSs('tripCache', null);
-  tripUnsub(); tripUnsub = () => {}; tripFp = null; cacheGiven = false; rerender();
+  tripUnsub(); tripUnsub = () => {}; tripFp = null; rerender();
 }
 
 /* ---------------- location sharing ---------------- */
