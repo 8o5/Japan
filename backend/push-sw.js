@@ -13,7 +13,7 @@ self.addEventListener('push', function (e) {
     renotify: !!(d.tag || n.tag),
     icon: n.icon || 'icons/icon-192.png',
     badge: 'icons/icon-192.png',
-    data: { jp27push: 1, url: d.url || (p.fcmOptions && p.fcmOptions.link) || './' }
+    data: { jp27push: 1, url: d.url || (p.fcmOptions && p.fcmOptions.link) || './', msg: d.jp27msg || null }
   };
   e.waitUntil(self.registration.showNotification(title, opts));
 });

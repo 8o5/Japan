@@ -13,9 +13,17 @@ const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform ==
 const STANDALONE = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const SHELL_MODE = CFG.dataSource === 'firestore';
 
-/* 1. Take a setup link off the URL immediately (it never reaches a server or the router). */
-let pendingLink = null;
-if (/(?:^#|&)join=/i.test(location.hash)) { pendingLink = decodeURIComponent(location.hash.slice(location.hash.search(/join=/i))); history.replaceState(null, '', location.pathname + location.search); }
+/* 1. Take a setup link (and a Jarvis message deep link) off the URL immediately
+      so they never reach a server or the day router. */
+let pendingLink = null, pendingMsg = null;
+(function takeHash() {
+  const h = location.hash;
+  if (/(?:^#|&)join=/i.test(h)) pendingLink = decodeURIComponent(h.slice(h.search(/join=/i)));
+  const mm = h.match(/(?:^#|&)msg=([^&]+)/i);
+  if (mm) pendingMsg = decodeURIComponent(mm[1]);
+  if (pendingLink || pendingMsg) history.replaceState(null, '', location.pathname + location.search);
+})();
+const includeTestMsgs = /(?:^|[?&])qa(?:=|&|$)/.test(location.search);
 
 const S = {
   live: null, loadErr: null, online: navigator.onLine,
@@ -63,21 +71,52 @@ function startWatches() {
   S.live.watchPeople(p => { S.people = p; rerender(); });
   S.live.watchPush(p => { S.push = p; LSs('pushOn', !!p.on); if (p.on) LSs('notify', null); rerender(); });
   S.live.watchSenderStatus(s => { S.sender = s; rerender(); });
+  S.live.watchMessages(onMessages, { includeTest: includeTestMsgs });
+  if (pendingMsg) showPendingMsg();
+  if (SHELL_MODE) startTripWatch();
 }
 window.addEventListener('online', () => { S.online = true; if (!S.live || S.loadErr) load(); else { S.live.verify().catch(() => {}); rerender(); } });
 window.addEventListener('offline', () => { S.online = false; rerender(); });
 
-/* App-shell mode: the itinerary comes from Firestore (linked phones only), cached for offline. */
+/* App-shell mode: the itinerary comes from Firestore (linked phones only), cached for offline.
+   Open apps listen with onSnapshot and hand a new payload to JP27.provideData (which shows
+   a "Plan updated" toast). Closed apps get the fresh doc the next time they open. */
+let tripUnsub = () => {}, tripFp = null;
+function tripFingerprint(d) {
+  if (d && d.sha256) return 's:' + d.sha256;
+  try { return 'j:' + JSON.stringify(d && d.overrides) + '|' + ((d && d.trip && d.trip.meta && (d.trip.meta.sha256 || d.trip.meta.extracted)) || ''); }
+  catch (e) { return ''; }
+}
+function giveTrip(d, updated) {
+  const slim = { trip: d.trip, overrides: d.overrides, places: d.places, version: d.version, sha256: d.sha256 || null };
+  if (window.JP27 && window.JP27.provideData) window.JP27.provideData(slim, { updated: !!updated });
+  else setTimeout(() => giveTrip(d, updated), 200);
+}
+function startTripWatch() {
+  if (!SHELL_MODE || !S.who || !S.live || !S.live.watchTrip) return;
+  tripUnsub();
+  tripUnsub = S.live.watchTrip(d => {
+    if (!d) { if (!LSg('tripCache', null)) { S.alertMsg = S.revoked ? '' : 'The plan isn’t published to the server yet.'; rerender(); } return; }
+    const fp = tripFingerprint(d);
+    const changed = !!(tripFp && fp !== tripFp);
+    LSs('tripCache', { trip: d.trip, overrides: d.overrides, places: d.places, version: d.version, sha256: d.sha256 || null });
+    tripFp = fp;
+    giveTrip(d, changed);
+  }) || (() => {});
+}
 async function provideTrip() {
-  const give = d => { if (window.JP27 && window.JP27.provideData) window.JP27.provideData(d); else setTimeout(() => give(d), 200); };
   const cached = LSg('tripCache', null);
-  if (cached) give(cached);
+  if (cached) { tripFp = tripFingerprint(cached); giveTrip(cached, false); }
   if (!S.who || !S.live) return;
+  if (S.live.watchTrip) { startTripWatch(); return; }
   try {
     const d = await S.live.loadTrip();
     if (!d) { if (!cached) { S.alertMsg = S.revoked ? '' : 'The plan isn’t published to the server yet.'; rerender(); } return; }
-    const slim = { trip: d.trip, overrides: d.overrides, places: d.places, version: d.version };
-    LSs('tripCache', slim); if (!cached) give(slim);
+    const fp = tripFingerprint(d);
+    const changed = !!(cached && fp && fp !== tripFp);
+    LSs('tripCache', { trip: d.trip, overrides: d.overrides, places: d.places, version: d.version, sha256: d.sha256 || null });
+    tripFp = fp;
+    giveTrip(d, changed);
   } catch (e) { if (!cached) { S.alertMsg = 'Couldn’t load the plan from the server.'; rerender(); } }
 }
 
@@ -112,7 +151,8 @@ async function doLink(text, person) {
 async function unlink() {
   if (!confirm('Unlink this phone? Location sharing and alerts stop on it. You can link again with your setup link.')) return;
   try { if (S.live) await S.live.leave(); } catch (e) {}
-  watching = false; S.push = null; LSs('pushOn', null); LSs('tripCache', null); rerender();
+  watching = false; S.push = null; LSs('pushOn', null); LSs('tripCache', null);
+  tripUnsub(); tripUnsub = () => {}; tripFp = null; rerender();
 }
 
 /* ---------------- location sharing ---------------- */
@@ -244,6 +284,94 @@ function fillSheet(o) {
 }
 function openSheet(o) { const d = sheet(); sheetState = {}; fillSheet(o || {}); if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); } }
 
+/* ---------------- Jarvis in-app popup ---------------- */
+function msgEl() {
+  let d = document.getElementById('msgpop');
+  if (d) return d;
+  d = document.createElement('dialog');
+  d.id = 'msgpop'; d.className = 'msg-pop'; d.setAttribute('aria-labelledby', 'msg-h'); d.setAttribute('aria-describedby', 'msg-b');
+  d.innerHTML = '<div class="msg-pop-in"><p class="msg-from" id="msg-from">Jarvis</p><h2 id="msg-h"></h2><p class="msg-body" id="msg-b"></p><p class="msg-err" id="msg-err" hidden></p><div class="msg-acts" id="msg-acts"></div></div>';
+  d.addEventListener('cancel', e => {
+    // FYI (OK only): Escape acknowledges. A question with choices stays up until a button is tapped.
+    if (currentMsg && currentMsg.actions && currentMsg.actions.length) e.preventDefault();
+    else if (currentMsg) { e.preventDefault(); answer(currentMsg, 'ack'); }
+  });
+  document.body.appendChild(d);
+  return d;
+}
+let currentMsg = null, queue = [], inflight = false, seen = new Set();
+function onMessages(list) {
+  for (const m of list) {
+    if (seen.has(m.id) || (currentMsg && currentMsg.id === m.id) || queue.some(x => x.id === m.id)) continue;
+    if (pendingMsg && m.id === pendingMsg) queue.unshift(m); else queue.push(m);
+  }
+  // drop messages that disappeared (expired / already answered on another device)
+  const live = new Set(list.map(m => m.id));
+  queue = queue.filter(m => live.has(m.id));
+  if (currentMsg && !live.has(currentMsg.id) && !inflight) hideMsg();
+  showNext();
+}
+async function showPendingMsg() {
+  if (!pendingMsg || !S.live) return;
+  try {
+    const m = await S.live.getMessage(pendingMsg);
+    pendingMsg = null;
+    if (!m) return;
+    if (m.replies && S.who && m.replies[S.who]) return;
+    if (m.test && !includeTestMsgs) return;
+    if (m.expireAt && m.expireAt.getTime() <= Date.now()) return;
+    if (currentMsg && currentMsg.id === m.id) return;
+    if (!queue.some(x => x.id === m.id)) queue.unshift(m);
+    showNext();
+  } catch (e) { pendingMsg = null; }
+}
+function showNext() {
+  if (currentMsg || inflight) return;
+  const m = queue.shift();
+  if (!m) return;
+  present(m);
+}
+function present(m) {
+  currentMsg = m; seen.add(m.id);
+  const d = msgEl();
+  document.getElementById('msg-from').textContent = m.from || 'Jarvis';
+  document.getElementById('msg-h').textContent = m.title || '';
+  document.getElementById('msg-b').textContent = m.body || '';
+  const err = document.getElementById('msg-err'); err.hidden = true; err.textContent = '';
+  const acts = document.getElementById('msg-acts');
+  const buttons = (m.actions && m.actions.length) ? m.actions : [{ label: 'OK', value: 'ack' }];
+  acts.className = 'msg-acts' + (buttons.length > 2 ? ' stack' : '');
+  acts.innerHTML = buttons.map((a, i) => `<button type="button" class="${i === buttons.length - 1 ? 'msg-primary' : ''}" data-msg-val="${esc(a.value)}">${esc(a.label)}</button>`).join('');
+  acts.onclick = ev => { const b = ev.target.closest('[data-msg-val]'); if (b) answer(m, b.getAttribute('data-msg-val')); };
+  if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+  const first = acts.querySelector('button'); if (first) first.focus();
+}
+function hideMsg() {
+  const d = document.getElementById('msgpop');
+  if (d && d.open) d.close();
+  currentMsg = null;
+}
+async function answer(m, value) {
+  if (inflight) return;
+  inflight = true;
+  const err = document.getElementById('msg-err');
+  try {
+    if (S.live && m.id && !String(m.id).startsWith('qa-')) await S.live.replyToMessage(m.id, value);
+    inflight = false; hideMsg(); showNext();
+  } catch (e) {
+    inflight = false;
+    if (err) { err.hidden = false; err.textContent = S.online ? 'Couldn’t send that reply. Try again.' : 'You’re offline — try again when you’re back on the network.'; }
+  }
+}
+window.addEventListener('hashchange', () => {
+  const mm = location.hash.match(/(?:^#|&)msg=([^&]+)/i);
+  if (!mm) return;
+  pendingMsg = decodeURIComponent(mm[1]);
+  const cleaned = location.hash.replace(/[?&]?msg=[^&]+/i, '').replace(/^#&/, '#').replace(/^#$/, '');
+  history.replaceState(null, '', location.pathname + location.search + (cleaned && cleaned !== '#' ? cleaned : ''));
+  showPendingMsg();
+});
+
 /* ---------------- events ---------------- */
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-live]'); if (!a) return;
@@ -259,6 +387,6 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => { const t = e.target; if (t.matches && t.matches('[data-live="lead"]')) setLead(t.value); });
 
-window.JP27_LIVE = { html, refresh: rerender, open: openSheet };
+window.JP27_LIVE = { html, refresh: rerender, open: openSheet, showMessage: present, hideMessage: hideMsg };
 const start = () => (window.requestIdleCallback || (f => setTimeout(f, 300)))(() => load());
 if (SHELL_MODE || (window.JP27 && window.JP27.ready)) start(); else document.addEventListener('jp27:ready', start, { once: true });

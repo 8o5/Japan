@@ -507,7 +507,7 @@
     if (/^(bookings|watch|prep|sources)$/.test(h)) return { view: h };
     return { view: 'day', day: lastDay || defaultDay() };
   }
-  var pendingJump = null, rendered = false;
+  var pendingJump = null, rendered = false, quietRender = false;
   function render() {
     var prev = ROUTE; ROUTE = parseHash();
     var v = $('#view');
@@ -535,7 +535,7 @@
     var sc = $('#strip a[aria-current]');
     if (sc) { var s = $('#strip'); s.scrollTo({ left: sc.offsetLeft - s.clientWidth / 2 + sc.clientWidth / 2, behavior: reduceMotion ? 'auto' : 'smooth' }); }
     // motion
-    if (!reduceMotion && rendered) {
+    if (!reduceMotion && rendered && !quietRender) {
       v.classList.remove('enter', 'enter-l', 'enter-r'); void v.offsetWidth;
       var dir = (prev.view === 'day' && ROUTE.view === 'day' && prev.day !== ROUTE.day) ? (ROUTE.day > prev.day ? 'enter-r' : 'enter-l') : 'enter';
       v.classList.add(dir);
@@ -547,7 +547,7 @@
       var el = document.getElementById(pendingJump); pendingJump = null;
       if (el) { setTimeout(function () { el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' }); }, 60); return; }
     }
-    if (prev.view !== ROUTE.view || prev.day !== ROUTE.day) window.scrollTo(0, 0);
+    if (!quietRender && (prev.view !== ROUTE.view || prev.day !== ROUTE.day)) window.scrollTo(0, 0);
   }
   function go(delta) {
     if (ROUTE.view !== 'day') return;
@@ -661,9 +661,39 @@
     if (window.parent !== window) window.parent.postMessage(pre.textContent, '*');
   }
 
+  /* ---------------- live plan updates ---------------- */
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function toast(msg) {
+    var t = document.getElementById('plan-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'plan-toast'; t.className = 'plan-toast'; t.setAttribute('role', 'status');
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._tm);
+    toast._tm = setTimeout(function () { t.classList.remove('show'); }, 3200);
+  }
+  function ingest(trip, overrides, places, opts) {
+    opts = opts || {};
+    TRIP = clone(trip);
+    OVERRIDES = Array.isArray(overrides) ? overrides : ((overrides && overrides.overrides) || []);
+    if (places && places.places) { PLACES = places.places; CITIES = places.cities || CITIES || {}; }
+    else { PLACES = places || PLACES || {}; }
+    applyOverrides(); indexTrip();
+    if (!window.JP27.ready) return;
+    quietRender = true; buildNav(); render(); quietRender = false;
+    var sheet = $('#dietsheet');
+    if (sheet && (sheet.open || sheet.hasAttribute('open'))) $('#diet-b').innerHTML = dietHTML();
+    if (opts.updated) toast('Plan updated');
+    window.__trip = { trip: TRIP, state: state, overrides: function () { return TRIP._overrideReport; } };
+  }
+
   /* ---------------- boot ---------------- */
   function getJSON(u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); }); }
-  window.JP27 = { renderLive: function () { if (TRIP) renderLive(); }, now: now, ls: LS, state: function () { return TRIP ? state() : null }, ready: false };
+  window.JP27 = { renderLive: function () { if (TRIP) renderLive(); }, now: now, ls: LS, state: function () { return TRIP ? state() : null }, ready: false,
+    provideData: function (d, opts) { window.JP27._pending = { d: d, opts: opts || {} }; } };
   function boot() {
     if (MOCK) { var mb = $('#mockbar'); mb.hidden = false; mb.textContent = 'Mock time · JST ' + fmtJST(now()) + ' · ' + new Date(now()).toISOString().slice(0, 16) + 'Z'; }
     gate().then(function () {
@@ -671,24 +701,37 @@
       // fetches it from Firestore after this phone is linked and hands it over via JP27.provideData().
       if (CFG.dataSource === 'firestore') {
         $('#view').innerHTML = '<div class="shell-wait"><span class="sun big" aria-hidden="true"></span><h1>Japan 2027</h1><div class="live-slot" id="shell-slot"></div></div>';
-        return new Promise(function (res) { window.JP27.provideData = function (d) { res([d.trip, d.overrides || [], d.places || {}]); }; if (window.JP27_LIVE && window.JP27_LIVE.refresh) window.JP27_LIVE.refresh(); });
+        if (window.JP27._pending) return Promise.resolve([window.JP27._pending.d.trip, window.JP27._pending.d.overrides || [], window.JP27._pending.d.places || {}]);
+        return new Promise(function (res) {
+          window.JP27.provideData = function (d, opts) {
+            window.JP27._pending = { d: d, opts: opts || {} };
+            res([d.trip, d.overrides || [], d.places || {}]);
+            if (window.JP27.ready) ingest(d.trip, d.overrides || [], d.places || {}, opts || {});
+          };
+          if (window.JP27_LIVE && window.JP27_LIVE.refresh) window.JP27_LIVE.refresh();
+        });
       }
       return Promise.all([getJSON('data/trip.json'), getJSON('data/overrides.json').catch(function () { return { overrides: [] }; }), getJSON('data/places.json').catch(function () { return {}; })]);
     }).then(function (r) {
-      TRIP = r[0]; OVERRIDES = Array.isArray(r[1]) ? r[1] : (r[1].overrides || []); PLACES = r[2].places || {}; CITIES = r[2].cities || {};
+      TRIP = clone(r[0]); OVERRIDES = Array.isArray(r[1]) ? r[1] : (r[1].overrides || []); PLACES = r[2].places || {}; CITIES = r[2].cities || {};
       applyOverrides(); indexTrip(); buildNav(); bind(); render();
       $('#dietbtn').hidden = false; // only once a plan is loaded (app-shell mode starts without one)
       if (wxWanted()) loadWeather(); else renderWeather();
       setInterval(function () { if (MOCK) $('#mockbar').textContent = 'Mock time · JST ' + fmtJST(now()) + ' · ' + jst(now()).d + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][jst(now()).m - 1]; renderLive(); }, 30000);
       document.addEventListener('visibilitychange', function () { if (!document.hidden) renderLive(); });
       if (/[?&]qa=1/.test(location.search)) setTimeout(qaReport, 1200);
-      window.JP27.ready = true; document.dispatchEvent(new Event('jp27:ready'));
+      window.JP27.ready = true;
+      window.JP27.provideData = function (d, opts) { window.JP27._pending = { d: d, opts: opts || {} }; ingest(d.trip, d.overrides || [], d.places || {}, opts || {}); };
+      if (window.JP27._pending) ingest(window.JP27._pending.d.trip, window.JP27._pending.d.overrides || [], window.JP27._pending.d.places || {}, window.JP27._pending.opts || {});
+      document.dispatchEvent(new Event('jp27:ready'));
       window.__trip = { trip: TRIP, state: state, overrides: function () { return TRIP._overrideReport; } };
     }).catch(function (e) {
       $('#view').innerHTML = '<p class="loading">Couldn’t load the plan (' + esc(e.message) + '). If you’re offline, open it once online first.</p>';
     });
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
       window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+      var swOnce = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () { if (swOnce) return; swOnce = true; location.reload(); });
     }
   }
   boot();

@@ -263,8 +263,9 @@ export async function enablePush({ registration, leadMin = 30 } = {}) {
   if (!token) throw err('no-token');
   await writeToken(token, leadMin);
   pushOn = true; emit();
-  m.onMessage(messaging, p => {   // app open: show it the same way as closed-app alerts
+  m.onMessage(messaging, p => {   // app open: leave-by nudges still show a notification; Jarvis messages use the in-app popup
     const n = p.notification || {}, d = p.data || {};
+    if (d.jp27msg) return;
     reg.showNotification(n.title || d.title || 'Japan 2027', { body: n.body || d.body || '', tag: d.tag, data: { jp27push: 1, url: d.url || './' }, icon: 'icons/icon-192.png' });
   });
   return token;
@@ -352,8 +353,16 @@ export function watchSenderStatus(cb) {
 }
 
 // ---------- private itinerary (optional "app shell" mode) ----------
+function parseTripDoc(s) {
+  if (!s.exists()) return null;
+  const d = s.data();
+  return { trip: JSON.parse(d.json), overrides: d.overrides ? JSON.parse(d.overrides) : { overrides: [] },
+    places: d.places ? JSON.parse(d.places) : {}, version: d.version || null, sha256: d.sha256 || null,
+    publishedAt: d.publishedAt?.toDate?.() || null };
+}
+
 /** Loads the itinerary from Firestore (members only; cached on the device for offline use).
- *  Returns { trip, overrides, places, version, publishedAt } or null if not joined / not published. */
+ *  Returns { trip, overrides, places, version, sha256, publishedAt } or null if not joined / not published. */
 export async function loadTrip() {
   await init();
   if (!who) return null;
@@ -361,8 +370,72 @@ export async function loadTrip() {
   let s;
   try { s = await f.getDoc(f.doc(db, 'trip', 'current')); }
   catch (e) { if (e.code === 'permission-denied') { setWho(null); revoked = true; emit(); return null; } throw e; }
+  return parseTripDoc(s);
+}
+
+/** Live updates to trip/current. cb(data|null). Returns unsubscribe. */
+export function watchTrip(cb) {
+  let unsub = () => {}, alive = true;
+  init().then(() => {
+    if (!alive || !who) return;
+    const f = fb;
+    unsub = f.onSnapshot(f.doc(db, 'trip', 'current'), s => {
+      try { cb(parseTripDoc(s)); }
+      catch (e) { cb(null); }
+    }, e => {
+      if (e.code === 'permission-denied') { setWho(null); revoked = true; emit(); cb(null); }
+    });
+  }).catch(() => {});
+  return () => { alive = false; unsub(); };
+}
+
+// ---------- Jarvis messages (in-app popup; same doc is also web-pushed when the app is closed) ----------
+function msgView(id, d) {
+  const created = d.createdAt?.toDate?.() || d.createdAt?.toMillis?.() && new Date(d.createdAt.toMillis()) || null;
+  const expire = d.expireAt?.toDate?.() || d.expireAt?.toMillis?.() && new Date(d.expireAt.toMillis()) || null;
+  const actions = Array.isArray(d.actions) ? d.actions.filter(a => a && a.label && a.value).map(a => ({ label: String(a.label).slice(0, 40), value: String(a.value).slice(0, 80) })) : [];
+  return { id, target: d.target, title: d.title || '', body: d.body || '', from: d.from || 'Jarvis', actions, test: !!d.test,
+    replies: d.replies || {}, createdAt: created, expireAt: expire };
+}
+
+/** Live list of Jarvis messages aimed at this person (or 'all'), not yet expired and not yet answered by them.
+ *  Test messages (admin --test) are omitted unless includeTest is true. Returns unsubscribe. */
+export function watchMessages(cb, { includeTest = false } = {}) {
+  let unsub = () => {}, alive = true;
+  init().then(() => {
+    if (!alive || !who) return;
+    const f = fb, me = who;
+    const q = f.query(f.collection(db, 'messages'), f.where('target', 'in', [me, 'all']));
+    unsub = f.onSnapshot(q, snap => {
+      const now = Date.now();
+      const list = snap.docs.map(d => msgView(d.id, d.data({ serverTimestamps: 'estimate' })))
+        .filter(m => (!m.expireAt || m.expireAt.getTime() > now) && !(m.replies && m.replies[me]) && (includeTest || !m.test))
+        .sort((a, b) => (a.createdAt?.getTime?.() || 0) - (b.createdAt?.getTime?.() || 0));
+      cb(list);
+    }, e => console.warn('[live] messages', e.code || e));
+  }).catch(() => {});
+  return () => { alive = false; unsub(); };
+}
+
+/** Button value, or 'ack' for OK / dismiss. */
+export async function replyToMessage(id, value) {
+  await init();
+  if (!who) throw err('not-joined');
+  const f = fb, v = String(value == null ? 'ack' : value).slice(0, 80);
+  if (!v) throw err('empty-reply');
+  await f.updateDoc(f.doc(db, 'messages', id), { [`replies.${who}`]: { value: v, at: f.serverTimestamp() } });
+}
+
+/** One message by id (for a #msg= deep link). Returns null if missing, expired, or not for this person. */
+export async function getMessage(id) {
+  await init();
+  if (!who) return null;
+  const f = fb;
+  let s;
+  try { s = await f.getDoc(f.doc(db, 'messages', id)); }
+  catch (e) { if (e.code === 'permission-denied') return null; throw e; }
   if (!s.exists()) return null;
-  const d = s.data();
-  return { trip: JSON.parse(d.json), overrides: d.overrides ? JSON.parse(d.overrides) : { overrides: [] },
-    places: d.places ? JSON.parse(d.places) : {}, version: d.version || null, publishedAt: d.publishedAt?.toDate?.() || null };
+  const m = msgView(s.id, s.data());
+  if (m.expireAt && m.expireAt.getTime() <= Date.now()) return m; // still return; UI may show "expired"
+  return m;
 }
