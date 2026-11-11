@@ -344,8 +344,8 @@ function present(m) {
   acts.innerHTML = buttons.map((a, i) => `<button type="button" class="${i === buttons.length - 1 ? 'msg-primary' : ''}" data-msg-val="${esc(a.value)}">${esc(a.label)}</button>`).join('');
   acts.onclick = ev => { const b = ev.target.closest('[data-msg-val]'); if (b) answer(m, b.getAttribute('data-msg-val')); };
   if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
-  const first = acts.querySelector('button');
-  if (first && matchMedia('(hover:hover) and (pointer:fine)').matches) first.focus();
+  // Focus the dialog itself so iOS-style alerts don't start with a button highlight.
+  d.tabIndex = -1; d.focus();
 }
 function hideMsg() {
   const d = document.getElementById('msgpop');
