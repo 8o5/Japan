@@ -184,7 +184,26 @@
 
   /* ---------------- geo / leave-by ---------------- */
   var GEO = LS.get('geo', null);
-  function placeOf(stop) { var p = PLACES[stop.name]; return p ? { lat: p[0], lng: p[1], label: p[2] } : null; }
+  function placeOf(stop) {
+    var p = PLACES[stop.name]; if (!p) return null;
+    var lat = +p[0], lng = +p[1], ok = isFinite(lat) && isFinite(lng) && lat > 20 && lat < 46 && lng > 122 && lng < 154;
+    return ok ? { lat: lat, lng: lng, label: p[2], q: p[3] || p[2] || stop.name } : null;
+  }
+  /* Planner's own "Map" link (Apple Maps, address query) — the fallback destination when a stop has no verified coordinates. */
+  function plannerMapQuery(stop) {
+    var l = (stop.links || []).filter(function (x) { return /^https:\/\/maps\.apple\.com\//.test(x.href || ''); })[0];
+    if (!l) return null;
+    var m = /[?&]daddr=([^&]+)/.exec(l.href); if (!m) return null;
+    try { return decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch (e) { return null; }
+  }
+  /* Navigate target for a stop: verified coordinates first, else name + address query, else nothing. */
+  function navTarget(stop) {
+    var p = placeOf(stop); if (p) return p;
+    var raw = PLACES[stop.name]; if (raw && raw[3]) return { q: String(raw[3]) };
+    var q = plannerMapQuery(stop); if (!q) return null;
+    var nm = String(stop.name || '').split(' · ')[0].trim();
+    return { q: nm && q.toLowerCase().indexOf(nm.toLowerCase()) < 0 ? nm + ', ' + q : q };
+  }
   function km(a, b) {
     var R = 6371, r = Math.PI / 180, dLa = (b.lat - a.lat) * r, dLo = (b.lng - a.lng) * r;
     var x = Math.sin(dLa / 2) * Math.sin(dLa / 2) + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLo / 2) * Math.sin(dLo / 2);
@@ -330,7 +349,7 @@
       if (st.next && st.next.t - now() <= LS.get('leadMin', CFG.notifyLeadMin || 30) * 60000 && st.next.t > now()) notify('nx-' + st.next.uid, 'Next: ' + st.next.stop.name, st.next.stop.time + ' · ' + until(st.next.t));
       h += '<div class="w-act">' +
         (st.next && placeOf(st.next.stop) ? '<button class="btn" data-act="geo">' + (GEO_DENIED() ? 'Location is off · try again' : GEO && now() - GEO.at < 15 * 60e3 ? 'Update my location' : 'Use my location') + '</button>' : '') +
-        (st.next && placeOf(st.next.stop) ? '<a class="btn" href="' + esc(dirURL(placeOf(st.next.stop))) + '" target="_blank" rel="noopener">Directions</a>' : '') +
+        (st.next && navTarget(st.next.stop) ? '<a class="btn" href="' + esc(dirURL(navTarget(st.next.stop))) + '" target="_blank" rel="noopener">Directions</a>' : '') +
         (st.phase === 'trip' ? '<a class="btn btn-p" href="#d' + st.day + '" data-jump="' + esc((st.cur || st.next || {}).uid || '') + '">Jump to now</a>' : '') + '</div>' +
         (GEO_DENIED() ? '<p class="fine warn">Location is off for this app, so leave-by uses the current stop instead. To turn it on: iPhone Settings → Privacy &amp; Security → Location Services → Safari Websites (or the Japan 2027 app) → While Using.</p>' : '') +
         liveSlot();
@@ -347,10 +366,19 @@
   /* js/live.js (Firebase add-on) fills this: link status, Nic/Elly locations, trip alerts. */
   function liveSlot() { var L = window.JP27_LIVE; try { return '<div class="live-slot">' + (L && L.html ? L.html() : '') + '</div>'; } catch (e) { return ''; } }
   /* Wanderlog/TripIt-style one-tap directions to the next stop (transit). Apple Maps on Apple devices. */
-  function dirURL(p) {
-    var apple = /iP(hone|ad|od)|Macintosh/.test(navigator.userAgent);
-    return apple ? 'https://maps.apple.com/?daddr=' + p.lat + ',' + p.lng + '&dirflg=r'
-      : 'https://www.google.com/maps/dir/?api=1&destination=' + p.lat + ',' + p.lng + '&travelmode=transit';
+  function isApple() { return /iP(hone|ad|od)|Macintosh/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  /* p = {lat,lng} (verified coordinates) or {q} (name + address). Apple Maps (opens the Maps app from Safari and the
+     home-screen app) on Apple devices, Google Maps elsewhere; transit directions from wherever you are. */
+  function dirURL(p, apple) {
+    if (apple == null) apple = isApple();
+    var dest = p.lat != null ? p.lat.toFixed(6) + ',' + p.lng.toFixed(6) : encodeURIComponent(p.q);
+    return apple ? 'https://maps.apple.com/?daddr=' + dest + '&dirflg=r'
+      : 'https://www.google.com/maps/dir/?api=1&destination=' + dest + '&travelmode=transit';
+  }
+  function navHTML(stop) {
+    var t = navTarget(stop); if (!t) return '';
+    return '<a class="lk lk-b lk-nav" href="' + esc(dirURL(t)) + '" target="_blank" rel="noopener" data-nav="' + (t.lat != null ? 'll' : 'q') + '"' +
+      ' aria-label="Navigate to ' + esc(t.label || stop.name) + '">' + ic('🧭') + 'Navigate</a>';
   }
   function GEO_DENIED() { return !!LS.get('geoDenied', false); }
   function nnItem(k, s, day, cd) {
@@ -410,7 +438,10 @@
     if (s.getThere) h += '<p class="s-get">' + ic('📍') + '<b>' + esc(s.getThere.label) + '</b> ' + s.getThere.html + '</p>';
     if (s.meta && s.meta.length) h += '<p class="s-meta">' + s.meta.map(function (m) {
       return '<span' + (m.who ? ' class="who w-' + esc(m.who) + '"' : '') + '>' + (/^Open\b|^Always open/.test(m.text) ? ic('🕘') : '') + esc(m.text) + '</span>'; }).join('') + '</p>';
-    if (s.links && s.links.length) h += '<div class="s-links">' + s.links.map(function (l) {
+    var nav = navHTML(s);
+    // Navigate replaces the planner's address-only "Map" link (same destination, but by verified coordinates).
+    var links = (s.links || []).filter(function (l) { return !(nav && /^https:\/\/maps\.apple\.com\//.test(l.href || '')); });
+    if (nav || links.length) h += '<div class="s-links">' + nav + links.map(function (l) {
       return '<a class="lk' + (l.primary ? ' lk-b' : '') + '" href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>'; }).join('') + '</div>';
     if (s.details && s.details.length) h += '<details class="more"><summary>Details</summary><div class="more-b">' + rowsHTML(s.details) + '</div></details>';
     return h + '</article>';
