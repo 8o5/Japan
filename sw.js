@@ -1,7 +1,7 @@
 importScripts('backend/push-sw.js'); /* closed-app push handlers (Firebase backend) — must stay first */
 /* Service worker: offline-first app shell + data. Bump VERSION on every deploy
    (tools/extract.py does not touch this; README explains). */
-var VERSION = 'jp27-v129-ec3df8c9b7-shell';
+var VERSION = 'jp27-v129-6461865412-shell';
 var SHELL = ['./', 'index.html', 'css/app.css', 'js/config.js', 'js/app.js', 'js/live.js',
   'backend/backend.js', 'backend/firebase-config.js', 'backend/push-sw.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];

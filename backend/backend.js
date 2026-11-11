@@ -265,7 +265,7 @@ export async function enablePush({ registration, leadMin = 30 } = {}) {
   pushOn = true; emit();
   m.onMessage(messaging, p => {   // app open: leave-by nudges still show a notification; Jarvis messages use the in-app popup
     const n = p.notification || {}, d = p.data || {};
-    if (d.jp27msg) return;
+    if (d.jp27msg) { try { window.dispatchEvent(new CustomEvent('jp27:msg', { detail: { id: d.jp27msg } })); } catch (e) {} return; }
     reg.showNotification(n.title || d.title || 'Japan 2027', { body: n.body || d.body || '', tag: d.tag, data: { jp27push: 1, url: d.url || './' }, icon: 'icons/icon-192.png' });
   });
   return token;
@@ -415,6 +415,21 @@ export function watchMessages(cb, { includeTest = false } = {}) {
     }, e => console.warn('[live] messages', e.code || e));
   }).catch(() => {});
   return () => { alive = false; unsub(); };
+}
+
+/** One-shot fresh read of the same list watchMessages gives (server first, cache if offline).
+ *  Used when the app comes back to the foreground: iOS can freeze the snapshot socket in the background. */
+export async function listMessages({ includeTest = false } = {}) {
+  await init();
+  if (!who) return null;
+  const f = fb, me = who;
+  const q = f.query(f.collection(db, 'messages'), f.where('target', 'in', [me, 'all']));
+  let snap;
+  try { snap = await (f.getDocsFromServer || f.getDocs)(q); } catch (e) { snap = await f.getDocs(q); }
+  const now = Date.now();
+  return snap.docs.map(d => msgView(d.id, d.data({ serverTimestamps: 'estimate' })))
+    .filter(m => (!m.expireAt || m.expireAt.getTime() > now) && !(m.replies && m.replies[me]) && (includeTest || !m.test))
+    .sort((a, b) => (a.createdAt?.getTime?.() || 0) - (b.createdAt?.getTime?.() || 0));
 }
 
 /** Button value, or 'ack' for OK / dismiss. */

@@ -299,10 +299,11 @@ function msgEl() {
   document.body.appendChild(d);
   return d;
 }
-let currentMsg = null, queue = [], inflight = false, seen = new Set();
-function onMessages(list) {
+let currentMsg = null, queue = [], inflight = false, seen = new Set(), answered = new Set();
+function onMessages(list, opt) {
+  const fresh = !!(opt && opt.fresh);   // a fresh server read may re-show a seen-but-unanswered message
   for (const m of list) {
-    if (seen.has(m.id) || (currentMsg && currentMsg.id === m.id) || queue.some(x => x.id === m.id)) continue;
+    if (answered.has(m.id) || (!fresh && seen.has(m.id)) || (currentMsg && currentMsg.id === m.id) || queue.some(x => x.id === m.id)) continue;
     if (pendingMsg && m.id === pendingMsg) queue.unshift(m); else queue.push(m);
   }
   // drop messages that disappeared (expired / already answered on another device)
@@ -316,11 +317,11 @@ async function showPendingMsg() {
   try {
     const m = await S.live.getMessage(pendingMsg);
     pendingMsg = null;
-    if (!m) return;
+    if (!m || answered.has(m.id)) return;
     if (m.replies && S.who && m.replies[S.who]) return;
     if (m.test && !includeTestMsgs) return;
     if (m.expireAt && m.expireAt.getTime() <= Date.now()) return;
-    if (currentMsg && currentMsg.id === m.id) return;
+    if (currentMsg && currentMsg.id === m.id) { const d = document.getElementById('msgpop'); if (d && !d.open) present(m); return; }
     if (!queue.some(x => x.id === m.id)) queue.unshift(m);
     showNext();
   } catch (e) { pendingMsg = null; }
@@ -358,20 +359,45 @@ async function answer(m, value) {
   const err = document.getElementById('msg-err');
   try {
     if (S.live && m.id && !String(m.id).startsWith('qa-')) await S.live.replyToMessage(m.id, value);
+    answered.add(m.id);
     inflight = false; hideMsg(); showNext();
   } catch (e) {
     inflight = false;
     if (err) { err.hidden = false; err.textContent = S.online ? 'Couldn’t send that reply. Try again.' : 'You’re offline — try again when you’re back on the network.'; }
   }
 }
+function takeMsgId(id) {
+  if (!id) return;
+  pendingMsg = String(id);
+  showPendingMsg();
+}
 window.addEventListener('hashchange', () => {
   const mm = location.hash.match(/(?:^#|&)msg=([^&]+)/i);
   if (!mm) return;
-  pendingMsg = decodeURIComponent(mm[1]);
   const cleaned = location.hash.replace(/[?&]?msg=[^&]+/i, '').replace(/^#&/, '#').replace(/^#$/, '');
   history.replaceState(null, '', location.pathname + location.search + (cleaned && cleaned !== '#' ? cleaned : ''));
-  showPendingMsg();
+  takeMsgId(decodeURIComponent(mm[1]));
 });
+// Warm tap: the service worker posts the message id to the already-open app instead of navigating it.
+if (navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener('message', e => {
+    const d = e.data || {};
+    if (d.type === 'jp27:msg') { if (d.id) takeMsgId(d.id); else recheckMessages(); }
+  });
+}
+// Push arriving while the app is on screen (FCM onMessage in backend.js).
+window.addEventListener('jp27:msg', e => takeMsgId(e.detail && e.detail.id));
+// Safety net: whenever the app comes back to the foreground, re-read unanswered messages from the server.
+let recheckAt = 0;
+async function recheckMessages() {
+  if (!S.live || !S.who || !S.live.listMessages) return;
+  const t = Date.now(); if (t - recheckAt < 1500) return; recheckAt = t;
+  try { const list = await S.live.listMessages({ includeTest: includeTestMsgs }); if (list) onMessages(list, { fresh: true }); } catch (e) {}
+  if (pendingMsg) showPendingMsg();
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') recheckMessages(); });
+window.addEventListener('pageshow', e => { if (e.persisted) recheckMessages(); });
+window.addEventListener('focus', () => recheckMessages());
 
 /* ---------------- events ---------------- */
 document.addEventListener('click', e => {
