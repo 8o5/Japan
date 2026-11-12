@@ -56,7 +56,7 @@ const inTrip = () => { const t = nowMs(); return t >= Date.parse('2027-01-08T00:
 
 function rerender() {
   if (window.JP27 && window.JP27.renderLive) window.JP27.renderLive();
-  const slot = document.getElementById('shell-slot'); if (slot) slot.innerHTML = html();
+  const slot = document.getElementById('shell-slot'); if (slot) slot.innerHTML = welcomeHTML();
 }
 function withTimeout(p, ms, code) { return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error(code), { code })), ms))]); }
 
@@ -234,8 +234,8 @@ function personRow(k) {
 function alertsHTML() {
   const on = pushOn() || localOn();
   let state = 'Off', msg = S.alertMsg ? esc(S.alertMsg) : '';
-  if (pushOn()) state = `On · ${leadMin()} min before each stop · arrives even when the app is closed`;
-  else if (localOn()) state = `On · ${leadMin()} min before each stop · only while this app is open on this device`;
+  if (pushOn()) state = `On · ${leadMin()} min before each stop, even when closed`;
+  else if (localOn()) state = `On · ${leadMin()} min before · only while the app is open`;
   if (S.push && !S.push.on && (S.push.reason === 'expired' || S.push.reason === 'device-removed')) {
     state = 'Stopped on this phone';
     msg = 'Alerts stopped on this phone — tap <b>Turn on</b> to start them again.';
@@ -253,19 +253,37 @@ function alertsHTML() {
   const lead = `<label class="lead">Heads-up <select data-live="lead">${[15, 30, 45, 60, 90].map(v => `<option value="${v}"${v === +leadMin() ? ' selected' : ''}>${v} min</option>`).join('')}</select></label>`;
   return `<div class="lv-row"><div><p class="lv-k">Trip alerts</p><p class="lv-v">${esc(state)}</p></div><div class="lv-act">${lead}<button class="btn${on ? '' : ' btn-p'}" data-live="alerts" aria-pressed="${on}">${on ? 'Turn off' : 'Turn on'}</button></div></div>${msg ? `<p class="fine warn">${msg}</p>` : ''}${hb}`;
 }
+/* One-line status for the Now card (app.js shows a quiet "Link this phone" / "Trip alerts are off" row). */
+export function summary() {
+  let warn = '';
+  if (S.who && (pushOn() || localOn()) && 'Notification' in window && Notification.permission !== 'granted') warn = 'Alerts are blocked in Settings';
+  else if (S.push && !S.push.on && (S.push.reason === 'expired' || S.push.reason === 'device-removed')) warn = 'Alerts stopped on this phone';
+  else if (pushOn() && inTrip() && S.sender && S.sender.lastRunAt && !S.sender.healthy) warn = 'Alert server looks quiet';
+  return { who: S.who, revoked: S.revoked, alertsOn: pushOn() || localOn(), warn, shell: SHELL_MODE, offline: !S.online };
+}
+function welcomeHTML() {
+  // First run on the public site: nothing to see until this phone is linked.
+  if (S.revoked) return `<div class="wel"><p class="wel-t">This phone was unlinked or the code changed.</p><p class="fine">Paste the new setup link.</p><div class="w-act"><button class="btn btn-p btn-wide" data-live="link">Paste setup link</button></div></div>`;
+  if (IOS && !STANDALONE) return `<div class="wel"><p class="wel-t">Add it to your Home Screen first</p>
+    <ol class="wel-steps"><li><span class="n">1</span><span>Tap <b>Share</b> <svg class="i" viewBox="0 0 24 24" aria-label="Share icon"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M8 10.5H6.5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H16"/></svg> below</span></li>
+    <li><span class="n">2</span><span>Choose <b>Add to Home Screen</b></span></li><li><span class="n">3</span><span>Open <b>Japan 2027</b> there and paste your setup link</span></li></ol>
+    <p class="fine">Alerts and the offline plan only work in the Home Screen app.</p>${pendingLink ? '<div class="w-act"><button class="btn btn-p btn-wide" data-live="copy">Copy my setup link</button></div>' : ''}<p class="fine"><button class="linkbtn" data-live="link">Link this Safari tab instead</button></p></div>`;
+  if (S.who) return `<div class="wel"><p class="wel-t">Linked as ${NAME[S.who]}</p><p class="fine">${S.online ? 'Downloading the plan…' : 'Connect to the internet once to download the plan. After that it works offline.'}</p>${S.alertMsg ? `<p class="fine warn">${esc(S.alertMsg)}</p>` : ''}</div>`;
+  return `<div class="wel"><p class="wel-t">Private trip planner</p><p class="fine">Paste the setup link Nic sent you to open the plan on this device.</p><div class="w-act"><button class="btn btn-p btn-wide" data-live="link">Paste setup link</button></div></div>`;
+}
 export function html() {
   let h = '<div class="lv">';
   if (!S.who) {
-    const lead = S.revoked ? 'This phone was removed or the code changed — paste the new setup link.' : SHELL_MODE ? 'Paste your setup link to open the plan.' : 'Link this phone to see each other and get trip alerts.';
-    h += `<div class="lv-row"><div><p class="lv-k">Together</p><p class="lv-v">${lead}</p></div><div class="lv-act"><button class="btn btn-p" data-live="link">Link this phone</button></div></div>`;
+    const lead = S.revoked ? 'Unlinked or the code changed — paste the new setup link.' : SHELL_MODE ? 'Paste your setup link to open the plan.' : 'See each other on the map and get trip alerts.';
+    h += `<div class="lv-row"><div><p class="lv-k">Not linked</p><p class="lv-v">${lead}</p></div><div class="lv-act"><button class="btn btn-p" data-live="link">Link this phone</button></div></div>`;
   } else {
     const other = OTHER[S.who];
-    const status = !S.online || S.loadErr === 'offline' ? ' · offline, will reconnect' : S.loadErr ? ' · can’t reach the server' : '';
-    h += `<div class="lv-row"><div><p class="lv-k">Together · linked as ${NAME[S.who]}${esc(status)}</p></div></div>`;
+    const status = !S.online || S.loadErr === 'offline' ? 'Offline · reconnects by itself' : S.loadErr ? 'Can’t reach the server' : 'Connected';
+    h += `<div class="lv-row"><div><p class="lv-k">Linked as ${NAME[S.who]}</p><p class="lv-v">${esc(status)}</p></div></div>`;
     h += `<ul class="ppl">${personRow(other)}${personRow(S.who)}</ul>`;
-    h += `<div class="lv-row"><div><p class="lv-k">Share my location with ${NAME[other]}</p><p class="lv-v">${S.sharing ? 'On' : 'Off'}</p></div><div class="lv-act"><button class="btn${S.sharing ? '' : ' btn-p'}" data-live="share" aria-pressed="${S.sharing}"${S.live && !S.loadErr ? '' : ' disabled'}>${S.sharing ? 'Stop' : 'Share'}</button></div></div>`;
+    h += `<div class="lv-row"><div><p class="lv-k">Share location with ${NAME[other]}</p><p class="lv-v">${S.sharing ? 'On' : 'Off'}</p></div><div class="lv-act"><button class="btn${S.sharing ? '' : ' btn-p'}" data-live="share" aria-pressed="${S.sharing}"${S.live && !S.loadErr ? '' : ' disabled'}>${S.sharing ? 'Stop' : 'Share'}</button></div></div>`;
     if (S.shareHint) h += `<p class="fine warn">${esc(S.shareHint)}</p>`;
-    h += '<p class="fine">Only updates while the app is open on screen. For live tracking, use Find My → Share My Location.</p>';
+    h += '<p class="fine">Updates only while the app is open. For live tracking use Find My.</p>';
   }
   if (!SHELL_MODE || S.who) h += alertsHTML();
   if (S.who) h += '<p class="fine"><button class="linkbtn" data-live="unlink">Unlink this phone</button></p>';
@@ -277,8 +295,7 @@ function sheet() {
   let d = document.getElementById('linksheet');
   if (d) return d;
   d = document.createElement('dialog'); d.id = 'linksheet'; d.className = 'sheet'; d.setAttribute('aria-labelledby', 'link-h');
-  d.innerHTML = '<div class="sheet-in"><div class="sheet-h"><h2 id="link-h">Link this phone</h2><button type="button" class="iconbtn" data-close aria-label="Close">✕</button></div><div id="link-b"></div></div>';
-  d.addEventListener('click', e => { if (e.target === d) d.close(); });
+  d.innerHTML = '<div class="sheet-in"><div class="grab" aria-hidden="true"></div><div class="sheet-h"><h2 id="link-h">Link this phone</h2><button type="button" class="iconbtn x" data-close aria-label="Close">✕</button></div><div id="link-b"></div></div>';
   document.body.appendChild(d); return d;
 }
 let sheetState = {};
@@ -306,7 +323,12 @@ function fillSheet(o) {
   b.innerHTML = steps + (st.error ? `<p class="fine warn" role="alert">${esc(st.error)}</p>` : '') + (st.note ? `<p class="fine" role="status">${esc(st.note)}</p>` : '') + form +
     '<p class="fine">Lost the link? Nic keeps both setup links in Notes.</p>';
 }
-function openSheet(o) { const d = sheet(); sheetState = {}; fillSheet(o || {}); if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); } }
+function openSheet(o) {
+  const d = sheet(); sheetState = {}; fillSheet(o || {});
+  const me = document.getElementById('mesheet'); if (me && me.open) me.close();   // one sheet at a time
+  d.classList.remove('closing');
+  if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+}
 
 /* ---------------- Jarvis in-app popup ---------------- */
 function msgEl() {
@@ -437,13 +459,13 @@ document.addEventListener('click', e => {
   if (k === 'link') openSheet({ code: pendingLink || '' });
   else if (k === 'dolink') doLink(typed());
   else if (k === 'as') doLink(typed(), a.getAttribute('data-who'));
-  else if (k === 'copy') { navigator.clipboard && navigator.clipboard.writeText(sheetState.code || '').then(() => { a.textContent = 'Copied'; }); }
+  else if (k === 'copy') { navigator.clipboard && navigator.clipboard.writeText(sheetState.code || pendingLink || '').then(() => { a.textContent = 'Copied'; }); }
   else if (k === 'share') toggleShare();
   else if (k === 'alerts') toggleAlerts();
   else if (k === 'unlink') unlink();
 });
 document.addEventListener('change', e => { const t = e.target; if (t.matches && t.matches('[data-live="lead"]')) setLead(t.value); });
 
-window.JP27_LIVE = { html, refresh: rerender, open: openSheet, showMessage: present, hideMessage: hideMsg };
+window.JP27_LIVE = { html, summary, refresh: rerender, open: openSheet, showMessage: present, hideMessage: hideMsg };
 const start = () => (window.requestIdleCallback || (f => setTimeout(f, 300)))(() => load());
 if (SHELL_MODE || (window.JP27 && window.JP27.ready)) start(); else document.addEventListener('jp27:ready', start, { once: true });

@@ -38,9 +38,16 @@
     if (min <= 0) return 'now';
     if (min < 60) return 'in ' + min + ' min';
     var h = Math.floor(min / 60), mm = min % 60;
-    if (h < 24) return 'in ' + h + ' h' + (mm ? ' ' + mm + ' min' : '');
+    if (h < 24) return 'in ' + h + ' h' + (mm && h < 5 ? ' ' + mm + ' min' : '');
     var d = Math.floor(h / 24), hh = h % 24;
     return 'in ' + d + (d === 1 ? ' day' : ' days') + (d < 3 && hh ? ' ' + hh + ' h' : '');
+  }
+  var WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function fmtDayJST(ms) { var j = jst(ms), wd = new Date(Date.UTC(j.y, j.m - 1, j.d)).getUTCDay(); return WD[wd] + ' ' + j.d + ' ' + MON[j.m - 1]; }
+  /* "Today" / "Tomorrow" / "Sat 16 Jan", always by the Japan calendar */
+  function dayWord(ms) {
+    var a = jst(now()), b = jst(ms), da = Date.UTC(a.y, a.m - 1, a.d), db = Date.UTC(b.y, b.m - 1, b.d), n = Math.round((db - da) / 864e5);
+    return n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : fmtDayJST(ms);
   }
 
   /* ---------------- helpers ---------------- */
@@ -65,6 +72,14 @@
     return out;
   }
   function ic(e) { return '<span class="ic" aria-hidden="true">' + e + '</span>'; }
+  /* tiny stroke icons (own drawings, currentColor) */
+  var SVG = {
+    nav: '<path d="M20.5 3.5 3.8 10.6c-.8.4-.7 1.5.1 1.7l6.6 1.2 1.2 6.6c.2.9 1.3 1 1.7.1z" fill="currentColor" stroke="none"/>',
+    loc: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+    link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4l-1.3 1.3"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.3-1.3"/>',
+    bell: '<path d="M18 9.5a6 6 0 0 0-12 0c0 6.5-2.5 8-2.5 8h17S18 16 18 9.5"/><path d="M10.2 20.5a2 2 0 0 0 3.6 0"/>'
+  };
+  function svgI(k) { return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + (SVG[k] || '') + '</svg>'; }
   var FLAG_IC = { access: '🎟️', ok: '✅', diet: '⚠️', act: '📅', deadline: '⏰', time: '⏰', info: '💡', alert: '⚠️' };
   var STATUS_IC = { booked: '✅', walkin: '🚶', target: '🎯', plan: '📌', moved: '↪️' };
   var TYPE_IC = [
@@ -141,17 +156,17 @@
     DAYS = TRIP.days.map(function (d) { return d.day; });
     TRIP.days.forEach(function (d) {
       var list = [], n = 0;
-      function rec(items, party) {
+      function rec(items, party, ob) {
         items.forEach(function (it) {
-          if (it.kind === 'party') return rec(it.items, it.party);
+          if (it.kind === 'party') return rec(it.items, it.party, ob);
           if (it.kind !== 'stop' && it.kind !== 'route') return;
           it._uid = 's' + d.day + '-' + (n++);
           if (it.kind !== 'stop') return;
           var mins = parseClock(it.time);
-          list.push({ uid: it._uid, stop: it, party: party || '', t: (mins == null || it.optional || it.moved) ? null : jstAt(d.day, mins) });
+          list.push({ uid: it._uid, stop: it, party: party || '', ob: !!ob, day: d.day, t: (mins == null || it.optional || it.moved || ob) ? null : jstAt(d.day, mins) });
         });
       }
-      d.blocks.forEach(function (b) { rec(b.items); });
+      d.blocks.forEach(function (b) { rec(b.items, '', b.optional); });
       STOPS[d.day] = list;
     });
   }
@@ -159,28 +174,37 @@
   function tripDayAt(ms) { var j = jst(ms); return (j.y === 2027 && j.m === 1 && DAYS.indexOf(j.d) >= 0) ? j.d : null; }
   function cityOf(d) { return (d && d.city || 'Tokyo').split(' · ')[0]; }
 
+  /* Where are we in the trip? All maths in Japan time (fixed +09:00), never the device zone.
+     phase: pre (before the flight) · trip (flight out → flight home) · post.
+     During the trip: cur = timed stop that started ≤ 3 h ago, next = next timed stop (may be tomorrow),
+     later = untimed stops (planner order) between here and the next timed one, flying / home = in the air / flight home next. */
   function state() {
     var t = now(), dep = Date.parse(CFG.departure.iso), end = Date.parse(CFG.tripEnd);
-    var firstDay = DAYS[0], first = timed(firstDay)[0];
     if (t < dep) return { phase: 'pre', t: t, dep: dep };
     if (t >= end) return { phase: 'post', t: t };
-    var td = tripDayAt(t);
-    if (!td) return { phase: 'transit', t: t, next: first, nextDay: firstDay };
+    var td = tripDayAt(t) || (t < jstAt(DAYS[0], 0) ? DAYS[0] : DAYS[DAYS.length - 1]);
     var list = timed(td), cur = null, next = null;
     for (var i = 0; i < list.length; i++) { if (list[i].t <= t) cur = list[i]; else { next = list[i]; break; } }
-    var nextDay = td;
+    var nextDay = td, last = cur;
     if (!next) { var k = DAYS.indexOf(td) + 1; if (k < DAYS.length) { nextDay = DAYS[k]; next = timed(nextDay)[0] || null; } }
     // a current stop is "over" once it started more than 3 h ago (the planner has no end times)
     if (cur && t - cur.t > 3 * 3600e3) cur = null;
-    return { phase: 'trip', t: t, day: td, cur: cur, next: next, nextDay: nextDay };
+    var ord = mine(td), from = last ? ord.indexOf(last) + 1 : 0, to = next && nextDay === td ? ord.indexOf(next) : ord.length;
+    var hr = jst(t).h + jst(t).mi / 60;
+    var later = hr >= 22 ? [] : ord.slice(from, to < 0 ? ord.length : to).filter(function (s) { return s.t == null && !s.stop.optional && !s.stop.moved && !s.ob && !softOver(s.stop.time, hr); }).slice(0, 3);
+    return { phase: 'trip', t: t, day: td, cur: cur, next: next, nextDay: nextDay, later: later,
+      flying: td === DAYS[0] && !last, home: !next && td === DAYS[DAYS.length - 1] ? end : null };
   }
+  /* Planner soft times ("Morning", "Afternoon"…) — drop them from "Later today" once that part of the day is over. */
+  var SOFT_END = [[/^morning$/i, 12], [/^late morning$/i, 13], [/^(midday|lunch)$/i, 15], [/^afternoon$/i, 18], [/^(late afternoon|dusk)$/i, 19]];
+  function softOver(label, hr) { for (var i = 0; i < SOFT_END.length; i++) if (SOFT_END[i][0].test((label || '').trim())) return hr >= SOFT_END[i][1]; return false; }
   /* Whose phone is this? Set by js/live.js after "Link this phone" (cached, so it works offline).
-     On split days (Jan 12) Now/Next only shows this person's stops plus shared ones. */
+     On split days (Jan 12) Now/Next only shows this person's stops plus shared ones; an unlinked
+     device follows the Nic / Elly filter on that day instead. */
   function whoAmI() { var w = null; try { w = (localStorage.getItem('jp27.who') || '').replace(/"/g, ''); } catch (e) {} return w === 'nic' || w === 'elly' ? w : null; } // raw string, written by backend.js
-  function timed(day) {
-    var w = whoAmI();
-    return (STOPS[day] || []).filter(function (s) { return s.t != null && (!w || !s.party || s.party === w); }).sort(function (a, b) { return a.t - b.t; });
-  }
+  function partyMe() { var w = whoAmI(); if (w) return w; var p = LS.get('party', 'all'); return p === 'nic' || p === 'elly' ? p : null; }
+  function mine(day) { var w = partyMe(); return (STOPS[day] || []).filter(function (s) { return !w || !s.party || s.party === w; }); }
+  function timed(day) { return mine(day).filter(function (s) { return s.t != null; }).sort(function (a, b) { return a.t - b.t; }); }
 
   /* ---------------- geo / leave-by ---------------- */
   var GEO = LS.get('geo', null);
@@ -210,26 +234,28 @@
     return 2 * R * Math.asin(Math.sqrt(x));
   }
   function leaveBy(st) {
-    if (!st.next) return null;
+    // only for a next stop later today and within 4 h — never for tomorrow's first stop
+    if (!st.next || st.nextDay !== st.day || st.next.t - now() > 4 * 3600e3) return null;
     var dest = placeOf(st.next.stop); if (!dest) return null;
     var origin = null, from = '';
-    if (GEO && now() - GEO.at < 15 * 60e3) { origin = GEO; from = 'your location'; }
+    if (GEO && now() - GEO.at < 15 * 60e3 && km(GEO, dest) < 150) { origin = GEO; from = 'your location'; }
     else if (st.cur && placeOf(st.cur.stop)) { origin = placeOf(st.cur.stop); from = st.cur.stop.name; }
     if (!origin) return null;
     var L = CFG.leaveBy, d = km(origin, dest);
     var walk = d < L.walkMaxKm, est = Math.ceil(walk ? d / L.walkKmh * 60 : d / L.transitKmh * 60 + L.transitBufferMin);
     var left = (st.next.t - now()) / 60000;
-    return { km: d, est: est, walk: walk, from: from, go: left < est + L.extraBufferMin && left > -5, leaveAt: st.next.t - (est + L.extraBufferMin) * 60000 };
+    var leaveAt = st.next.t - (est + L.extraBufferMin) * 60000;
+    return { km: d, est: est, walk: walk, from: from, go: left < est + L.extraBufferMin && left > -5, soon: leaveAt - now() < 30 * 60000, leaveAt: leaveAt };
   }
   function askLocation(btn) {
-    if (!navigator.geolocation) { btn.textContent = 'Location unavailable'; return; }
-    btn.textContent = 'Locating…';
+    var lbl = btn.querySelector('span') || btn;
+    if (!navigator.geolocation) { lbl.textContent = 'Unavailable'; return; }
+    lbl.textContent = 'Locating…'; btn.classList.add('busy');
     navigator.geolocation.getCurrentPosition(function (p) {
-      GEO = { lat: p.coords.latitude, lng: p.coords.longitude, at: Date.now() }; LS.set('geo', GEO); LS.set('geoDenied', false); renderLive();
-      LS.set('geoDenied', false);
+      GEO = { lat: p.coords.latitude, lng: p.coords.longitude, at: now() }; LS.set('geo', GEO); LS.set('geoDenied', false); renderLive();
     }, function (err) {
       if (err && err.code === 1) { LS.set('geoDenied', true); GEO = null; LS.set('geo', null); renderLive(); }
-      else btn.textContent = 'Couldn’t get location — try again';
+      else { lbl.textContent = 'Try again'; btn.classList.remove('busy'); toast('Couldn’t get your location'); }
     }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 300000 });
   }
 
@@ -278,24 +304,25 @@
     if (!WX.city) {
       return compact ? '' : '<section class="w" aria-label="Weather"><h2 class="w-h">Weather</h2><p class="now-sub">Forecasts load automatically from two weeks before the trip.</p><div class="w-act"><button class="btn" data-act="wx">Check ' + esc(wxCity()) + ' now</button></div><p class="fine">Open-Meteo · no tracking.</p></section>';
     }
-    if (WX.loading && !WX.data) return compact ? '<p class="fine">Loading weather…</p>' : '<section class="w"><h2 class="w-h">Weather · ' + esc(WX.city) + '</h2><p class="now-sub">Loading…</p></section>';
+    if (WX.loading && !WX.data) return compact ? '' : '<section class="w"><h2 class="w-h">Weather · ' + esc(WX.city) + '</h2><p class="now-sub">Loading…</p></section>';
     var d = WX.data;
-    if (!d) return compact ? '' : '<section class="w"><h2 class="w-h">Weather · ' + esc(WX.city) + '</h2><p class="now-sub">' + esc(WX.err || 'No data') + '</p><div class="w-act"><button class="btn" data-act="wx">Retry</button></div></section>';
+    if (!d) return compact ? '' : '<section class="w"><h2 class="w-h">Weather · ' + esc(WX.city) + '</h2><p class="now-sub">' + esc(WX.err || 'No forecast yet') + '</p><div class="w-act"><button class="btn" data-act="wx">Try again</button></div></section>';
     var cur = d.current || {}, w = WMO[cur.weather_code] || ['🌡️', ''];
-    if (compact) return '<p class="fine">' + w[0] + ' ' + esc(WX.city) + ' ' + Math.round(cur.temperature_2m) + '° · ' + esc(w[1]) + (WX.err ? ' · ' + esc(WX.err) : '') + '</p>';
+    if (compact) return '<button type="button" class="wx-chip" data-act="wxsheet" aria-label="Weather in ' + esc(WX.city) + ': ' + Math.round(cur.temperature_2m) + ' degrees, ' + esc(w[1]) + (WX.stale ? ', last saved forecast' : '') + '. Show forecast"><span aria-hidden="true">' + w[0] + '</span>' + Math.round(cur.temperature_2m) + '°<span class="wx-city">' + esc(WX.city) + '</span></button>';
     var days = (d.daily && d.daily.time || []).slice(0, 7).map(function (t, i) {
       var c = WMO[d.daily.weather_code[i]] || ['', ''], dt = new Date(t + 'T00:00:00Z');
-      return '<div title="' + esc(c[1]) + '"><b>' + dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }) + ' ' + dt.getUTCDate() + '</b>' + c[0] + '<br>' +
-        Math.round(d.daily.temperature_2m_max[i]) + '° / ' + Math.round(d.daily.temperature_2m_min[i]) + '°' +
-        (d.daily.precipitation_probability_max ? '<br>' + (d.daily.precipitation_probability_max[i] || 0) + '%☂' : '') + '</div>';
+      return '<div title="' + esc(c[1]) + '"><b>' + dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }) + ' ' + dt.getUTCDate() + '</b><span class="wd-i" aria-label="' + esc(c[1]) + '">' + c[0] + '</span>' +
+        '<span class="wd-t">' + Math.round(d.daily.temperature_2m_max[i]) + '° / ' + Math.round(d.daily.temperature_2m_min[i]) + '°</span>' +
+        (d.daily.precipitation_probability_max ? '<span class="wd-p">' + (d.daily.precipitation_probability_max[i] || 0) + '% ☂</span>' : '') + '</div>';
     }).join('');
     return '<section class="w" aria-label="Weather"><h2 class="w-h">Weather · ' + esc(WX.city) + '</h2><div class="wx-row"><span class="wx-ic" aria-hidden="true">' + w[0] + '</span><div><div class="wx-t">' +
       Math.round(cur.temperature_2m) + '°C</div><div class="now-sub">' + esc(w[1]) + ' now</div></div></div><div class="wx-d">' + days + '</div>' +
-      '<p class="fine">' + (WX.err ? esc(WX.err) + ' · ' : '') + 'Open-Meteo forecast, Japan time. Not from the planner.</p></section>';
+      '<p class="fine">' + (WX.err ? esc(WX.err) + ' · ' : '') + 'Open-Meteo · Japan time · not from the planner.</p></section>';
   }
   function renderWeather() {
     var el = $('#wx-d'); if (el) el.innerHTML = weatherHTML(false);
     $$('.wx-inline').forEach(function (e) { e.innerHTML = weatherHTML(true); });
+    if (SHEET.open === 'wx') $('#me-b').innerHTML = weatherHTML(false);
   }
 
   /* ---------------- deadlines from the planner (verbatim) ---------------- */
@@ -313,58 +340,95 @@
     var list = upcomingDeadlines(n);
     if (!list.length) return '';
     return '<section class="w" aria-label="Upcoming deadlines"><h2 class="w-h">' + esc(title || 'Coming up · booking windows') + '</h2><ul class="dl-list">' +
-      list.map(function (x) {
-        return '<li class="' + (x.b.urgent || x.open ? 'urgent' : '') + '"><span class="dl-w">' + ic('⏰') + (x.open ? '<b class="dl-open">' + (/open/i.test(x.b.when || '') ? 'Open now' : 'Due now') + '</b> · ' : '') + esc(x.b.when) + '</span><span class="dl-t">' + esc(x.b.what) + '</span></li>';
-      }).join('') + '</ul><div class="w-act"><a class="btn" href="#bookings">All bookings</a></div><p class="fine">Times as written in the planner (Pacific unless marked JST).</p></section>';
+      list.map(dlItemHTML).join('') + '</ul><div class="w-act"><a class="btn" href="#bookings">All bookings</a></div><p class="fine">Times as written in the planner (Pacific unless marked JST).</p></section>';
   }
 
   /* ---------------- Now / Next card ---------------- */
+  function dlItemHTML(x) {
+    return '<li class="' + (x.b.urgent || x.open ? 'urgent' : '') + '"><span class="dl-w">' + ic('⏰') + (x.open ? '<b class="dl-open">' + (/open/i.test(x.b.when || '') ? 'Open now' : 'Due now') + '</b> · ' : '') + esc(x.b.when) + '</span><span class="dl-t">' + esc(x.b.what) + '</span></li>';
+  }
+  function clockHead(st, label) {
+    return '<div class="nc-top"><p class="nc-clock"><span class="live" aria-hidden="true"></span>' + esc(label || fmtJST(st.t)) +
+      '<span class="nc-tz">' + esc(fmtDayJST(st.t)) + ' · Japan</span></p><div class="wx-inline"></div></div>';
+  }
+  function partyTag(s) { return s.party && !whoAmI() && LS.get('party', 'all') === 'all' ? '<span class="who w-' + esc(s.party) + '">' + (s.party === 'nic' ? 'Nic' : 'Elly') + '</span> ' : ''; }
+  function ncRow(kind, s, day, st) {
+    var other = day !== st.day, when = other ? dayWord(s.t) : '';
+    var badge = kind === 'Next' ? (other ? '<span class="nc-badge nc-badge-q">' + esc(when) + '</span>' : '<span class="nc-badge">' + esc(until(s.t)) + '</span>') : '';
+    return '<a class="nc-row nc-' + kind.toLowerCase() + '" href="#d' + day + '" data-jump="' + s.uid + '">' +
+      '<span class="nc-k">' + kind + '</span>' + badge +
+      '<span class="nc-n">' + partyTag(s) + esc(s.stop.name) + '</span>' +
+      '<span class="nc-m">' + esc(s.stop.time) + (s.stop.typeLabel ? ' · ' + esc(s.stop.typeLabel) : '') + '</span></a>';
+  }
+  function laterHTML(st) {
+    if (!st.later || !st.later.length) return '';
+    var head = st.next && st.nextDay === st.day ? 'Before that' : 'Later today';
+    return '<div class="nc-later"><p class="nc-k">' + head + '</p><ul>' + st.later.map(function (s) {
+      return '<li><a href="#d' + st.day + '" data-jump="' + s.uid + '"><span class="nc-lt">' + esc(s.stop.time) + '</span><span class="nc-ln">' + partyTag(s) + esc(s.stop.name) + '</span></a></li>'; }).join('') + '</ul></div>';
+  }
+  function navBtn(stop, cls) {
+    var t = stop && navTarget(stop); if (!t) return '';
+    return '<a class="btn ' + (cls || 'btn-p') + ' btn-nav" href="' + esc(dirURL(t)) + '" target="_blank" rel="noopener" aria-label="Navigate to ' + esc(stop.name) + '">' + svgI('nav') + 'Navigate</a>';
+  }
   function nowHTML() {
     var st = state(), h = '';
     if (st.phase === 'pre') {
-      var dep = Date.parse(CFG.departure.iso);
-      h += '<h2 class="w-h"><span class="live" aria-hidden="true"></span>Countdown</h2>' +
+      var dep = Date.parse(CFG.departure.iso), d0 = dayObj(DAYS[0]);
+      h += '<div class="nc-top"><p class="nc-clock"><span class="live" aria-hidden="true"></span>Countdown</p><div class="wx-inline"></div></div>' +
         '<p class="now-big">' + esc(until(dep).replace(/^in /, '')) + '</p>' +
         '<p class="now-sub">to ' + esc(CFG.departure.label) + ' · ' + esc(CFG.departure.when) + '</p>' +
-        '<div class="nn" style="margin-top:14px"><a class="nn-i" href="#d' + DAYS[0] + '"><span class="nn-k">Then</span><span class="nn-n">' + esc(dayObj(DAYS[0]).title) + '</span><span class="nn-m">' + esc(dayObj(DAYS[0]).eyebrow) + '</span></a></div>';
+        '<a class="nc-row nc-then" href="#d' + DAYS[0] + '"><span class="nc-k">Then · ' + esc(d0.eyebrow.split(' · ')[0]) + '</span><span class="nc-n">' + esc(d0.title) + '</span></a>';
       var dl = upcomingDeadlines(3);
-      if (dl.length) h += '<div class="now-dl"><h3 class="w-h" style="margin-top:16px">Next booking windows</h3><ul class="dl-list">' + dl.map(function (x) {
-        return '<li class="' + (x.b.urgent || x.open ? 'urgent' : '') + '"><span class="dl-w">' + ic('⏰') + (x.open ? '<b class="dl-open">' + (/open/i.test(x.b.when || '') ? 'Open now' : 'Due now') + '</b> · ' : '') + esc(x.b.when) + '</span><span class="dl-t">' + esc(x.b.what) + '</span></li>'; }).join('') + '</ul></div>';
-      h += liveSlot() + '<div class="wx-inline"></div>';
+      if (dl.length) h += '<div class="now-dl"><p class="nc-k">Next booking windows</p><ul class="dl-list">' + dl.map(dlItemHTML).join('') + '</ul></div>';
+      h += liveNudge();
     } else if (st.phase === 'post') {
-      h += '<h2 class="w-h">Trip complete</h2><p class="now-big">おかえり</p><p class="now-sub">Japan 9–21 Jan 2027 is done. Everything stays here to look back on.</p>';
+      h += '<div class="nc-top"><p class="nc-clock">Trip complete</p></div><p class="now-big">おかえり</p><p class="now-sub">Japan 9–21 Jan 2027 is done. Everything stays here to look back on.</p>';
     } else {
-      var lb = st.phase === 'trip' ? leaveBy(st) : null;
-      h += '<h2 class="w-h"><span class="live" aria-hidden="true"></span>' + (st.phase === 'trip' ? 'Now · ' + esc(fmtJST(st.t)) + ' JST' : 'In transit') + '</h2><div class="nn">';
-      if (st.phase === 'transit') h += '<div class="nn-i"><span class="nn-k">Now</span><span class="nn-n">' + esc(CFG.departure.label) + '</span><span class="nn-m">' + esc(dayObj(DAYS[0]).title) + '</span></div>';
-      if (st.cur) h += nnItem('Now', st.cur, st.day, false);
-      if (st.next) h += nnItem('Next', st.next, st.nextDay, true);
-      if (!st.cur && !st.next) h += '<p class="now-sub">Nothing timed left today.</p>';
-      h += '</div>';
+      var lb = leaveBy(st), tgt = st.next ? st.next.stop : null;
+      h += clockHead(st);
+      if (st.flying) h += '<div class="nc-row nc-now"><span class="nc-k">Now</span><span class="nc-n">' + ic('✈️') + 'In the air</span><span class="nc-m">' + esc(CFG.departure.label) + '</span></div>';
+      if (st.cur) h += ncRow('Now', st.cur, st.day, st);
+      var tomorrow = st.next && st.nextDay !== st.day;
+      if (tomorrow) h += laterHTML(st);
+      if (st.next) h += ncRow('Next', st.next, st.nextDay, st);
+      else if (st.home) h += '<div class="nc-row nc-next"><span class="nc-k">Next</span><span class="nc-badge">' + esc(until(st.home)) + '</span><span class="nc-n">' + ic('✈️') + 'Flight home</span><span class="nc-m">' + esc(fmtJST(st.home)) + '</span></div>';
+      if (st.next && st.nextDay !== st.day) {
+        var nd = dayObj(st.nextDay);
+        h += '<p class="nc-start"><span class="nc-k">' + esc(nd.start.label) + '</span>' + nd.start.html + '</p>';
+      }
+      if (!st.cur && !st.next && !st.home && !st.flying) h += '<p class="now-sub">Nothing timed left today.</p>';
       if (lb) {
-        h += '<div class="leave' + (lb.go ? ' go' : '') + '" role="status">' + (lb.go ? '🚶 Start heading out' : '⏰ Leave by about ' + esc(fmtJST(lb.leaveAt))) +
-          '<small>~' + lb.est + ' min ' + (lb.walk ? 'walk' : 'by transit') + ' · ' + lb.km.toFixed(1) + ' km from ' + esc(lb.from) + ' · app estimate, not the planner</small></div>';
+        h += '<div class="leave' + (lb.go ? ' go' : lb.soon ? ' soon' : '') + '">' + (lb.go ? ic('🚶') + 'Time to head out' : ic('⏰') + 'Leave by ~' + esc(fmtJST(lb.leaveAt))) +
+          '<small>~' + lb.est + ' min ' + (lb.walk ? 'walk' : 'by transit') + ' · ' + lb.km.toFixed(1) + ' km from ' + esc(lb.from) + ' · app estimate</small></div>';
         if (lb.go && st.next) notify('lb-' + st.next.uid, 'Start heading out', st.next.stop.name + ' at ' + st.next.stop.time);
       }
-      if (st.next && st.next.t - now() <= LS.get('leadMin', CFG.notifyLeadMin || 30) * 60000 && st.next.t > now()) notify('nx-' + st.next.uid, 'Next: ' + st.next.stop.name, st.next.stop.time + ' · ' + until(st.next.t));
-      h += '<div class="w-act">' +
-        (st.next && placeOf(st.next.stop) ? '<button class="btn" data-act="geo">' + (GEO_DENIED() ? 'Location is off · try again' : GEO && now() - GEO.at < 15 * 60e3 ? 'Update my location' : 'Use my location') + '</button>' : '') +
-        (st.next && navTarget(st.next.stop) ? '<a class="btn" href="' + esc(dirURL(navTarget(st.next.stop))) + '" target="_blank" rel="noopener">Directions</a>' : '') +
-        (st.phase === 'trip' ? '<a class="btn btn-p" href="#d' + st.day + '" data-jump="' + esc((st.cur || st.next || {}).uid || '') + '">Jump to now</a>' : '') + '</div>' +
-        (GEO_DENIED() ? '<p class="fine warn">Location is off for this app, so leave-by uses the current stop instead. To turn it on: iPhone Settings → Privacy &amp; Security → Location Services → Safari Websites (or the Japan 2027 app) → While Using.</p>' : '') +
-        liveSlot();
-      h += '<div class="wx-inline"></div>';
+      if (!tomorrow) h += laterHTML(st);
+      if (st.next && st.nextDay === st.day && st.next.t - now() <= LS.get('leadMin', CFG.notifyLeadMin || 30) * 60000 && st.next.t > now()) notify('nx-' + st.next.uid, 'Next: ' + st.next.stop.name, st.next.stop.time + ' · ' + until(st.next.t));
+      var showGeo = lb || (st.next && st.nextDay === st.day && placeOf(st.next.stop) && st.next.t - now() < 4 * 3600e3);
+      var acts = (st.flying ? '' : navBtn(tgt)) + (showGeo ? '<button class="btn btn-ic" data-act="geo" aria-label="' + (GEO_DENIED() ? 'Location is off — try again' : 'Use my location for the leave-by time') + '">' + svgI('loc') + '<span>' + (GEO_DENIED() ? 'Location off' : GEO && now() - GEO.at < 15 * 60e3 ? 'Update' : 'My location') + '</span></button>' : '');
+      if (acts) h += '<div class="w-act nc-act">' + acts + '</div>';
+      if (GEO_DENIED() && showGeo) h += '<p class="fine warn">Location is off, so leave-by uses the current stop. Turn on: Settings → Privacy &amp; Security → Location Services → Safari Websites → While Using.</p>';
+      h += liveNudge();
     }
     return '<section class="w nowcard" aria-label="Now and next">' + h + '</section>';
   }
   function compactNowHTML(st) {
-    return '<section class="w nowcard compact" aria-label="Now and next"><h2 class="w-h"><span class="live" aria-hidden="true"></span>Today · ' + esc(fmtJST(st.t)) + ' JST</h2><div class="nn">' +
-      (st.cur ? nnItem('Now', st.cur, st.day, false) : '') + (st.next ? nnItem('Next', st.next, st.nextDay, true) : '') +
-      (!st.cur && !st.next ? '<p class="now-sub">Nothing timed left today.</p>' : '') + '</div>' +
-      '<div class="w-act"><a class="btn btn-p" href="#d' + st.day + '" data-jump="' + esc((st.cur || st.next || {}).uid || '') + '">Back to today</a></div></section>';
+    var n = st.next && st.nextDay === st.day ? st.next : null;
+    return '<section class="w nowcard compact" aria-label="Now and next"><a class="nc-mini" href="#d' + st.day + '" data-jump="' + esc((st.cur || st.next || {}).uid || '') + '">' +
+      '<span class="nc-clock"><span class="live" aria-hidden="true"></span>' + esc(fmtJST(st.t)) + '</span>' +
+      '<span class="nc-mini-t">' + (st.cur ? '<span class="nc-k">Now</span> ' + esc(st.cur.stop.name) : n ? '<span class="nc-k">Next</span> ' + esc(n.stop.name) + ' · ' + esc(until(n.t)) : 'Back to today') + '</span>' +
+      '<span class="nc-go">Today ›</span></a></section>';
   }
   /* js/live.js (Firebase add-on) fills this: link status, Nic/Elly locations, trip alerts. */
   function liveSlot() { var L = window.JP27_LIVE; try { return '<div class="live-slot">' + (L && L.html ? L.html() : '') + '</div>'; } catch (e) { return ''; } }
+  /* One quiet line in the Now card pointing to the You sheet when something needs doing. */
+  function liveNudge() {
+    var L = window.JP27_LIVE, s = null; try { s = L && L.summary ? L.summary() : null; } catch (e) {}
+    if (!s) return '';
+    var msg = !s.who ? (s.revoked ? 'Re-link this phone' : 'Link this phone for alerts') : !s.alertsOn ? 'Trip alerts are off' : s.warn ? s.warn : '';
+    if (!msg) return '';
+    return '<button type="button" class="nc-nudge" data-act="me">' + svgI(!s.who ? 'link' : 'bell') + '<span>' + esc(msg) + '</span><span class="chev" aria-hidden="true">›</span></button>';
+  }
   /* Wanderlog/TripIt-style one-tap directions to the next stop (transit). Apple Maps on Apple devices. */
   function isApple() { return /iP(hone|ad|od)|Macintosh/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
   /* p = {lat,lng} (verified coordinates) or {q} (name + address). Apple Maps (opens the Maps app from Safari and the
@@ -378,22 +442,48 @@
   function navHTML(stop) {
     var t = navTarget(stop); if (!t) return '';
     return '<a class="lk lk-b lk-nav" href="' + esc(dirURL(t)) + '" target="_blank" rel="noopener" data-nav="' + (t.lat != null ? 'll' : 'q') + '"' +
-      ' aria-label="Navigate to ' + esc(t.label || stop.name) + '">' + ic('🧭') + 'Navigate</a>';
+      ' aria-label="Navigate to ' + esc(t.label || stop.name) + '">' + svgI('nav') + 'Navigate</a>';
   }
   function GEO_DENIED() { return !!LS.get('geoDenied', false); }
-  function nnItem(k, s, day, cd) {
-    return '<a class="nn-i" href="#d' + day + '" data-jump="' + s.uid + '"><span class="nn-k">' + k + '</span><span class="nn-n">' + esc(s.stop.name) + '</span>' +
-      '<span class="nn-m">' + esc(s.stop.time) + (cd ? ' · <span class="nn-cd">' + esc(until(s.t)) + '</span>' : '') + ' · ' + esc(s.stop.typeLabel) + '</span></a>';
-  }
+  var lastAnnounce = '', lastToday = null;
   function renderLive() {
-    var html = nowHTML();
+    var html = nowHTML(), st = state();
     $('#now-d').innerHTML = html;
-    var st = state();
-    // Phone: on a day other than today, a compact Now/Next (no location, linking or weather) so the day itself comes first.
+    // Phone: on a day other than today, a one-line "back to today" pill so the day itself comes first.
     $('#now-m').innerHTML = (ROUTE.view !== 'day') ? '' : (st.phase === 'trip' && ROUTE.day !== st.day) ? compactNowHTML(st) : html;
-    $('#dl-d').innerHTML = st.phase === 'pre' || st.phase === 'transit' ? deadlinesHTML(6) : (st.phase === 'trip' ? deadlinesHTML(3, 'Still to do') : '');
+    $('#dl-d').innerHTML = st.phase === 'pre' ? deadlinesHTML(6) : (st.phase === 'trip' ? deadlinesHTML(3, 'Still to do') : '');
+    var ld = $('#live-d'); if (ld) ld.innerHTML = '<section class="w" aria-label="Together and alerts"><h2 class="w-h">You &amp; alerts</h2>' + liveSlot() + '</section>';
+    var mb = $('#me-b'); if (mb && $('#mesheet').open) mb.innerHTML = liveSlot();
     renderWeather();
     highlightNow();
+    nextBar(st);
+    // screen readers: announce only when the next stop changes, not every 30 s tick
+    var say = st.phase === 'trip' && st.next ? 'Next: ' + st.next.stop.name + ', ' + st.next.stop.time + (st.nextDay !== st.day ? ', ' + dayWord(st.next.t) : '') : '';
+    if (say !== lastAnnounce) { lastAnnounce = say; var sr = $('#sr-live'); if (sr && rendered) sr.textContent = say; }
+    // left open across midnight (or resumed next morning): follow the new day if we were on "today"
+    var td = st.phase === 'trip' ? st.day : null;
+    if (lastToday !== null && td !== lastToday) {
+      buildNav();
+      if (ROUTE.view === 'day' && ROUTE.day === lastToday && td) { lastToday = td; lastDay = td; location.hash = '#d' + td; return; }
+    }
+    lastToday = td;
+  }
+  /* Phone: once the Now card scrolls away, a slim "Next · Navigate" bar docks above the tab bar. */
+  function nextBar(st) {
+    var bar = $('#nextbar'); if (!bar) return;
+    st = st || state();
+    var ok = st.phase === 'trip' && st.next && st.nextDay === st.day && ROUTE.view === 'day' && ROUTE.day === st.day;
+    document.body.classList.toggle('has-next', !!ok);
+    if (!ok) { bar.innerHTML = ''; bar.classList.remove('show'); return; }
+    var t = navTarget(st.next.stop);
+    bar.innerHTML = '<a class="nb-i" href="#d' + st.day + '" data-jump="' + st.next.uid + '"><span class="nb-k">Next · ' + esc(until(st.next.t)) + '</span><span class="nb-n">' + esc(st.next.stop.name) + '</span></a>' +
+      (t ? '<a class="nb-go" href="' + esc(dirURL(t)) + '" target="_blank" rel="noopener" aria-label="Navigate to ' + esc(st.next.stop.name) + '">' + svgI('nav') + 'Go</a>' : '');
+    nextBarVis();
+  }
+  function nextBarVis() {
+    var bar = $('#nextbar'), card = $('#now-m .nowcard'); if (!bar) return;
+    var show = !!bar.innerHTML && !!card && !card.classList.contains('compact') && card.getBoundingClientRect().bottom < 60;
+    bar.classList.toggle('show', show);
   }
   function highlightNow() {
     $$('.it.is-now,.it.is-next,.it.is-past').forEach(function (e) { e.classList.remove('is-now', 'is-next', 'is-past'); });
@@ -442,7 +532,7 @@
     // Navigate replaces the planner's address-only "Map" link (same destination, but by verified coordinates).
     var links = (s.links || []).filter(function (l) { return !(nav && /^https:\/\/maps\.apple\.com\//.test(l.href || '')); });
     if (nav || links.length) h += '<div class="s-links">' + nav + links.map(function (l) {
-      return '<a class="lk' + (l.primary ? ' lk-b' : '') + '" href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>'; }).join('') + '</div>';
+      return '<a class="lk' + (l.primary ? ' lk-t' : '') + '" href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>'; }).join('') + '</div>';
     if (s.details && s.details.length) h += '<details class="more"><summary>Details</summary><div class="more-b">' + rowsHTML(s.details) + '</div></details>';
     return h + '</article>';
   }
@@ -653,6 +743,49 @@
     els.forEach(function (e) { if (e.getBoundingClientRect().top < vh) e.classList.add('in'); else io.observe(e); });
   }
 
+  /* ---------------- sheets ---------------- */
+  var SHEET = { open: null }, nbRaf = 0;
+  function showSheet(d) {
+    d.classList.remove('closing');
+    if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+  }
+  function closeSheet(d) {
+    if (!d || !d.open || d.classList.contains('closing')) return;
+    if (d.id === 'mesheet') SHEET.open = null;
+    if (reduceMotion) { d.close(); return; }
+    d.classList.add('closing');
+    setTimeout(function () { d.classList.remove('closing'); d.style.transform = ''; if (d.open) d.close(); }, 230);
+  }
+  window.JP27_closeSheet = closeSheet;
+  function openInfo(kind) {
+    var d = $('#mesheet'); SHEET.open = kind;
+    $('#me-h').textContent = kind === 'wx' ? 'Weather' + (WX.city ? ' · ' + WX.city : '') : 'You & alerts';
+    d.classList.toggle('is-wx', kind === 'wx');
+    $('#me-b').innerHTML = kind === 'wx' ? weatherHTML(false) : liveSlot();
+    if (kind === 'wx' && !WX.data && !WX.loading) loadWeather(true);
+    showSheet(d);
+  }
+  function sheetDrag() {
+    var y0 = 0, dy = 0, d = null;
+    document.addEventListener('touchstart', function (e) {
+      var h = e.target.closest && e.target.closest('dialog.sheet .grab, dialog.sheet .sheet-h');
+      if (!h || e.target.closest('button')) { d = null; return; }
+      d = h.closest('dialog'); y0 = e.touches[0].clientY; dy = 0; d.style.transition = 'none';
+    }, { passive: true });
+    document.addEventListener('touchmove', function (e) {
+      if (!d) return; dy = Math.max(0, e.touches[0].clientY - y0); d.style.transform = 'translateY(' + dy + 'px)';
+    }, { passive: true });
+    document.addEventListener('touchend', function () {
+      if (!d) return; var dd = d; d = null; dd.style.transition = '';
+      if (dy > 90) closeSheet(dd); else dd.style.transform = '';
+    }, { passive: true });
+  }
+  function goToday() {
+    lastDay = null; var st = state(), h = '#d' + defaultDay();
+    if (st.phase === 'trip') pendingJump = (st.cur || st.next || {}).uid || null;
+    if (location.hash === h) { render(); if (!pendingJump) window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }); } else location.hash = h;
+  }
+
   /* ---------------- events ---------------- */
   function bind() {
     window.addEventListener('hashchange', render);
@@ -664,10 +797,12 @@
         if (location.hash === a.getAttribute('href')) { e.preventDefault(); render(); }
         return;
       }
-      if (a.hasAttribute('data-show')) { LS.set('party', a.getAttribute('data-show')); applyParty(); return; }
-      if (a.hasAttribute('data-close')) { a.closest('dialog').close(); return; }
+      if (a.hasAttribute('data-show')) { LS.set('party', a.getAttribute('data-show')); applyParty(); renderLive(); return; }
+      if (a.hasAttribute('data-close')) { closeSheet(a.closest('dialog')); return; }
       var act = a.getAttribute('data-act');
-      if (act === 'geo') askLocation(a);
+      if (act === 'me') openInfo('me');
+      else if (act === 'wxsheet') openInfo('wx');
+      else if (act === 'geo') askLocation(a);
       else if (act === 'notify') askNotify(a);
       else if (act === 'wx') loadWeather(true);
     });
@@ -680,32 +815,50 @@
       if (e.target.closest('input,textarea,select,[contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1);
     });
-    // swipe between days (phone)
-    var sx = 0, sy = 0, st = 0, ok = false;
-    $('#view').addEventListener('touchstart', function (e) {
-      var t = e.touches[0]; ok = e.touches.length === 1 && !e.target.closest('.fig,.strip,.rail-d,input,label');
-      sx = t.clientX; sy = t.clientY; st = Date.now();
+    // swipe between days (phone): the page follows the finger a little, then springs to the next day
+    var sx = 0, sy = 0, st = 0, ok = false, horiz = null, V = $('#view');
+    V.addEventListener('touchstart', function (e) {
+      var t = e.touches[0]; ok = ROUTE.view === 'day' && e.touches.length === 1 && !e.target.closest('.fig,.strip,.rail-d,input,label,.glance,select,textarea');
+      sx = t.clientX; sy = t.clientY; st = Date.now(); horiz = null;
     }, { passive: true });
-    $('#view').addEventListener('touchend', function (e) {
+    V.addEventListener('touchmove', function (e) {
+      if (!ok || reduceMotion) return; var t = e.touches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+      if (horiz === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) horiz = Math.abs(dx) > Math.abs(dy) * 1.4;
+      if (!horiz) return;
+      var i = DAYS.indexOf(ROUTE.day), edge = (dx > 0 && i === 0) || (dx < 0 && i === DAYS.length - 1);
+      V.style.transition = 'none'; V.style.transform = 'translate3d(' + (dx * (edge ? 0.12 : 0.3)) + 'px,0,0)';
+    }, { passive: true });
+    V.addEventListener('touchend', function (e) {
       if (!ok) return; var t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
-      if (Math.abs(dx) > 70 && Math.abs(dy) < Math.abs(dx) * 0.5 && Date.now() - st < 700) go(dx < 0 ? 1 : -1);
+      V.style.transition = ''; V.style.transform = '';
+      if (Math.abs(dx) > 70 && Math.abs(dy) < Math.abs(dx) * 0.6 && Date.now() - st < 800) go(dx < 0 ? 1 : -1);
     }, { passive: true });
-    // diet sheet
-    var sheet = $('#dietsheet');
-    $('#dietbtn').addEventListener('click', function () {
-      $('#diet-b').innerHTML = dietHTML();
-      if (sheet.showModal) sheet.showModal(); else sheet.setAttribute('open', '');
-    });
-    sheet.addEventListener('click', function (e) { if (e.target === sheet) sheet.close(); });
-    // theme
+    V.addEventListener('touchcancel', function () { V.style.transition = ''; V.style.transform = ''; }, { passive: true });
+    // sheets: diet, You & alerts, weather (bottom sheets on phone; drag the handle down to close)
+    $('#dietbtn').addEventListener('click', function () { $('#diet-b').innerHTML = dietHTML(); showSheet($('#dietsheet')); });
+    $('#mebtn').addEventListener('click', function () { openInfo('me'); });
+    document.addEventListener('click', function (e) { if (e.target.matches && e.target.matches('dialog.sheet')) closeSheet(e.target); });
+    document.addEventListener('cancel', function (e) { if (e.target.matches && e.target.matches('dialog.sheet')) { e.preventDefault(); closeSheet(e.target); } }, true);
+    sheetDrag();
+    // theme: auto → light → dark
     var tb = $('#themebtn'), modes = ['auto', 'light', 'dark'];
     function setTheme(m) {
       if (m === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', m);
-      tb.setAttribute('aria-label', 'Theme: ' + m); tb.title = 'Theme: ' + m;
+      tb.setAttribute('aria-label', 'Appearance: ' + m + '. Tap to change'); tb.title = 'Appearance: ' + m; tb.setAttribute('data-mode', m);
+      $$('meta[name="theme-color"]').forEach(function (x) {
+        var dark = /dark/.test(x.getAttribute('media') || '') ;
+        if (m === 'auto') x.setAttribute('content', dark ? '#15110E' : '#FBF7F1'); else x.setAttribute('content', m === 'dark' ? '#15110E' : '#FBF7F1');
+      });
     }
     setTheme(LS.get('theme', 'auto'));
-    tb.addEventListener('click', function () { var m = modes[(modes.indexOf(LS.get('theme', 'auto')) + 1) % 3]; LS.set('theme', m); setTheme(m); });
-    $('#brand').addEventListener('click', function (e) { e.preventDefault(); lastDay = null; var h = '#d' + defaultDay(); if (location.hash === h) render(); else location.hash = h; });
+    tb.addEventListener('click', function () { var m = modes[(modes.indexOf(LS.get('theme', 'auto')) + 1) % 3]; LS.set('theme', m); setTheme(m); toast('Appearance: ' + { auto: 'Automatic', light: 'Light', dark: 'Dark' }[m]); });
+    $('#brand').addEventListener('click', function (e) { e.preventDefault(); goToday(); });
+    // tab bar: tapping "Days" again while on a day jumps back to today (like re-tapping an iOS tab)
+    $$('#tabbar a[data-view="day"]').forEach(function (a) { a.addEventListener('click', function (e) { if (ROUTE.view === 'day') { e.preventDefault(); goToday(); } }); });
+    window.addEventListener('scroll', function () { if (!nbRaf) nbRaf = requestAnimationFrame(function () { nbRaf = 0; nextBarVis(); }); }, { passive: true });
+    // network status: one quiet pill, never a blocking banner
+    function net() { $('#net').hidden = navigator.onLine; document.documentElement.classList.toggle('is-offline', !navigator.onLine); }
+    window.addEventListener('offline', net); window.addEventListener('online', net); net();
     window.addEventListener('online', function () { if (WX.city) loadWeather(); });
   }
 
@@ -780,12 +933,14 @@
   window.JP27 = { renderLive: function () { if (TRIP) renderLive(); }, now: now, ls: LS, state: function () { return TRIP ? state() : null }, ready: false,
     provideData: function (d, opts) { window.JP27._pending = { d: d, opts: opts || {} }; } };
   function boot() {
-    if (MOCK) { var mb = $('#mockbar'); mb.hidden = false; mb.textContent = 'Mock time · JST ' + fmtJST(now()) + ' · ' + new Date(now()).toISOString().slice(0, 16) + 'Z'; }
+    if (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) document.documentElement.classList.add('ios');
+    if (MOCK) { var mb = $('#mockbar'); mb.hidden = false; mb.textContent = 'Mock clock · ' + fmtDayJST(now()) + ' · ' + fmtJST(now()) + ' JST'; }
     gate().then(function () {
       // App-shell mode (CFG.dataSource === 'firestore'): the public site carries no itinerary; js/live.js
       // fetches it from Firestore after this phone is linked and hands it over via JP27.provideData().
       if (CFG.dataSource === 'firestore') {
-        $('#view').innerHTML = '<div class="shell-wait"><span class="sun big" aria-hidden="true"></span><h1>Japan 2027</h1><div class="live-slot" id="shell-slot"></div></div>';
+        $('#view').innerHTML = '<div class="shell-wait"><span class="sun big" aria-hidden="true"></span><h1>Japan 2027</h1><p class="shell-sub">Nic &amp; Elly · 9–21 January</p><div class="live-slot" id="shell-slot"></div></div>';
+        document.body.classList.add('v-shell');
         if (window.JP27._pending) return Promise.resolve([window.JP27._pending.d.trip, window.JP27._pending.d.overrides || [], window.JP27._pending.d.places || {}]);
         return new Promise(function (res) {
           window.JP27.provideData = function (d, opts) {
@@ -798,11 +953,13 @@
       }
       return Promise.all([getJSON('data/trip.json'), getJSON('data/overrides.json').catch(function () { return { overrides: [] }; }), getJSON('data/places.json').catch(function () { return {}; })]);
     }).then(function (r) {
+      document.body.classList.remove('v-shell');
       TRIP = clone(r[0]); OVERRIDES = Array.isArray(r[1]) ? r[1] : (r[1].overrides || []); PLACES = r[2].places || {}; CITIES = r[2].cities || {};
       applyOverrides(); indexTrip(); buildNav(); bind(); render();
       $('#dietbtn').hidden = false; // only once a plan is loaded (app-shell mode starts without one)
+      document.body.classList.add('has-plan');
       if (wxWanted()) loadWeather(); else renderWeather();
-      setInterval(function () { if (MOCK) $('#mockbar').textContent = 'Mock time · JST ' + fmtJST(now()) + ' · ' + jst(now()).d + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][jst(now()).m - 1]; renderLive(); }, 30000);
+      setInterval(function () { if (MOCK) $('#mockbar').textContent = 'Mock clock · ' + fmtDayJST(now()) + ' · ' + fmtJST(now()) + ' JST'; renderLive(); }, 30000);
       document.addEventListener('visibilitychange', function () { if (!document.hidden) renderLive(); });
       if (/[?&]qa=1/.test(location.search)) setTimeout(qaReport, 1200);
       window.JP27.ready = true;
@@ -811,14 +968,25 @@
       document.dispatchEvent(new Event('jp27:ready'));
       window.__trip = { trip: TRIP, state: state, overrides: function () { return TRIP._overrideReport; } };
     }).catch(function (e) {
-      $('#view').innerHTML = '<p class="loading">Couldn’t load the plan (' + esc(e.message) + '). If you’re offline, open it once online first.</p>';
+      $('#view').innerHTML = '<div class="empty"><span class="sun big" aria-hidden="true"></span><h2>Couldn’t load the plan</h2><p>' + (navigator.onLine ? 'Something went wrong — try again.' : 'You’re offline and this device hasn’t saved the plan yet. Open it once with internet.') + '</p><button class="btn btn-p" onclick="location.reload()">Try again</button><p class="fine">' + esc(e.message) + '</p></div>';
     });
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-      window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
-      // Reload only when a NEW version replaces one that already controlled this page. The first install
-      // has nothing stale to replace, and reloading then used to drop a tapped setup link.
-      var swOnce = false, hadController = !!navigator.serviceWorker.controller;
-      navigator.serviceWorker.addEventListener('controllerchange', function () { if (swOnce || !hadController) return; swOnce = true; location.reload(); });
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+          // a Home Screen app can stay "open" for days: look for a new version whenever it comes back
+          document.addEventListener('visibilitychange', function () { if (!document.hidden && navigator.onLine) reg.update().catch(function () {}); });
+        }).catch(function () {});
+      });
+      // A new version took over. Reload only when it can't interrupt anything: right after launch, or the next
+      // time the app comes back to the foreground. The first install has nothing stale (and reloading then
+      // used to drop a tapped setup link).
+      var swOnce = false, hadController = !!navigator.serviceWorker.controller, t0 = Date.now();
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (swOnce || !hadController) return; swOnce = true;
+        var busy = function () { return document.querySelector('dialog[open]') || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)); };
+        if (Date.now() - t0 < 8000 && !busy()) { location.reload(); return; }
+        document.addEventListener('visibilitychange', function () { if (!document.hidden && !busy()) location.reload(); });
+      });
     }
   }
   boot();

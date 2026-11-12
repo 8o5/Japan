@@ -7,12 +7,17 @@
 <meta name="description" content="Our trip planner.">
 <meta name="theme-color" content="#FBF7F1" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15110E" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex,nofollow">
+<meta name="format-detection" content="telephone=no">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Japan 2027">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<script>try{var m=JSON.parse(localStorage.getItem('jp27.theme')||'"auto"');if(m==='light'||m==='dark')document.documentElement.setAttribute('data-theme',m)}catch(e){}</script>
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -21,7 +26,7 @@
 
 <header class="top" id="top">
   <div class="top-in">
-    <a class="brand" href="#" id="brand" aria-label="Japan 2027 · Nic &amp; Elly — today">
+    <a class="brand" href="#" id="brand" aria-label="Japan 2027 · Nic &amp; Elly — go to today">
       <span class="sun" aria-hidden="true"></span><span class="brand-t">Japan 2027 <span class="brand-s">· Nic &amp; Elly</span></span>
     </a>
     <nav class="views" aria-label="Views">
@@ -32,8 +37,10 @@
       <a href="#sources" data-view="sources">Sources</a>
     </nav>
     <div class="top-act">
+      <span class="net" id="net" role="status" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 12.6a10 10 0 0 1 4.2-2.3M19 12.6a10 10 0 0 0-2.7-1.8M1.4 9a15 15 0 0 1 4.3-2.6M22.6 9A15 15 0 0 0 12 5c-.7 0-1.4 0-2 .1"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg><span>Offline</span></span>
       <button type="button" class="pill pill-diet" id="dietbtn" aria-haspopup="dialog" hidden>Elly’s diet</button>
-      <button type="button" class="iconbtn" id="themebtn" aria-label="Theme: auto"><span aria-hidden="true">◐</span></button>
+      <button type="button" class="iconbtn" id="mebtn" aria-haspopup="dialog" aria-label="You &amp; alerts"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c.9-3.6 3.9-5.8 7.5-5.8s6.6 2.2 7.5 5.8"/></svg></button>
+      <button type="button" class="iconbtn" id="themebtn" aria-label="Appearance: auto"><svg class="i th-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg><svg class="i th-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg><svg class="i th-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg></button>
     </div>
   </div>
   <nav class="strip" id="strip" aria-label="Days"></nav>
@@ -43,27 +50,38 @@
   <aside class="rail" id="rail" aria-label="Trip days"></aside>
   <main id="main" tabindex="-1">
     <div class="now-m" id="now-m"></div>
-    <div id="view" class="view" aria-live="polite"><p class="loading">Loading the plan…</p></div>
+    <div id="view" class="view"><div class="skel" aria-label="Loading the plan" role="status"><span></span><span></span><span></span><span></span></div></div>
   </main>
   <aside class="side" id="side" aria-label="Now, weather and deadlines">
     <div id="now-d"></div>
     <div id="wx-d"></div>
     <div id="dl-d"></div>
+    <div id="live-d"></div>
   </aside>
 </div>
+<p class="sr" id="sr-live" aria-live="polite"></p>
 
+<div class="nextbar" id="nextbar" aria-label="Next stop"></div>
 <nav class="tabbar" id="tabbar" aria-label="Views">
-  <a href="#" data-view="day"><span class="tb-i" aria-hidden="true">◉</span>Day</a>
-  <a href="#bookings" data-view="bookings"><span class="tb-i" aria-hidden="true">✓</span>Bookings</a>
-  <a href="#watch" data-view="watch"><span class="tb-i" aria-hidden="true">◎</span>Watch</a>
-  <a href="#prep" data-view="prep"><span class="tb-i" aria-hidden="true">☰</span>Prep</a>
-  <a href="#sources" data-view="sources"><span class="tb-i" aria-hidden="true">↗</span>Sources</a>
+  <a href="#" data-view="day"><svg class="tb-i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.6" fill="currentColor" stroke="none"/></svg>Days</a>
+  <a href="#bookings" data-view="bookings"><svg class="tb-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v2.2a2.3 2.3 0 0 0 0 4.6v2.2a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-2.2a2.3 2.3 0 0 0 0-4.6z"/><path d="M14.5 6v12" stroke-dasharray="2 2.2"/></svg>Bookings</a>
+  <a href="#watch" data-view="watch"><svg class="tb-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M1.8 12S5.5 5.5 12 5.5 22.2 12 22.2 12 18.5 18.5 12 18.5 1.8 12 1.8 12z"/><circle cx="12" cy="12" r="3.2"/></svg>Watch</a>
+  <a href="#prep" data-view="prep"><svg class="tb-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="M3.5 6.5l1.5 1.5 2.5-3M3.5 12l1.5 1.5 2.5-3M3.5 17.5l1.5 1.5 2.5-3"/></svg>Prep</a>
+  <a href="#sources" data-view="sources"><svg class="tb-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></svg>Sources</a>
 </nav>
 
 <dialog class="sheet" id="dietsheet" aria-labelledby="diet-h">
   <div class="sheet-in">
-    <div class="sheet-h"><h2 id="diet-h">Elly’s diet</h2><button type="button" class="iconbtn" data-close aria-label="Close">✕</button></div>
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-h"><h2 id="diet-h">Elly’s diet</h2><button type="button" class="iconbtn x" data-close aria-label="Close">✕</button></div>
     <div id="diet-b"></div>
+  </div>
+</dialog>
+<dialog class="sheet" id="mesheet" aria-labelledby="me-h">
+  <div class="sheet-in">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-h"><h2 id="me-h">You &amp; alerts</h2><button type="button" class="iconbtn x" data-close aria-label="Close">✕</button></div>
+    <div id="me-b"></div>
   </div>
 </dialog>
 
