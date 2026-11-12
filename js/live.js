@@ -189,8 +189,11 @@ function onShareError(e) {
 async function toggleShare() {
   if (!S.live) return;
   S.shareHint = '';
-  if (S.sharing) { await S.live.stopSharing().catch(() => {}); rerender(); return; }
-  try { await S.live.startSharing({ onError: onShareError }); } catch (e) { onShareError(e); }
+  if (S.sharing) { S.sharing = false; rerender(); await S.live.stopSharing().catch(() => {}); rerender(); return; }
+  // optimistic: the button flips at once; the backend's onState (or an error) settles the real state
+  S.sharing = true; rerender();
+  try { await S.live.startSharing({ onError: onShareError }); }
+  catch (e) { S.sharing = !!(S.live.state && S.live.state().sharing); onShareError(e); }
 }
 
 /* ---------------- alerts (one system) ---------------- */
@@ -295,7 +298,7 @@ function sheet() {
   let d = document.getElementById('linksheet');
   if (d) return d;
   d = document.createElement('dialog'); d.id = 'linksheet'; d.className = 'sheet'; d.setAttribute('aria-labelledby', 'link-h');
-  d.innerHTML = '<div class="sheet-in"><div class="grab" aria-hidden="true"></div><div class="sheet-h"><h2 id="link-h">Link this phone</h2><button type="button" class="iconbtn x" data-close aria-label="Close">✕</button></div><div id="link-b"></div></div>';
+  d.innerHTML = '<div class="sheet-in"><div class="grab" aria-hidden="true"></div><div class="sheet-h"><h2 id="link-h">Link this phone</h2><button type="button" class="iconbtn x" data-close aria-label="Close"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div><div id="link-b"></div></div>';
   document.body.appendChild(d); return d;
 }
 let sheetState = {};

@@ -1,7 +1,7 @@
 importScripts('backend/push-sw.js'); /* closed-app push handlers (Firebase backend) — must stay first */
 /* Service worker: offline-first app shell + data. Bump VERSION on every deploy
    (tools/extract.py does not touch this; README explains). */
-var VERSION = 'jp27-v129-7bd380577f-shell';
+var VERSION = 'jp27-v129-8cacb2dd57-shell';
 var SHELL = ['./', 'index.html', 'css/app.css', 'js/config.js', 'js/app.js', 'js/live.js',
   'backend/backend.js', 'backend/firebase-config.js', 'backend/push-sw.js', 'manifest.webmanifest',
   'vendor/firebase/13.2.0/firebase-app.js', 'vendor/firebase/13.2.0/firebase-auth.js',
@@ -27,14 +27,29 @@ self.addEventListener('fetch', function (e) {
   if (req.method !== 'GET' || url.origin !== location.origin) return; // weather, Firebase etc. go straight to the network
   var isData = /\/data\/[^/]+\.json$/.test(url.pathname);
   if (isData) {
-    // network-first (so a new planner version shows up), but give up after 3 s and use the cache —
-    // flaky subway / hotel Wi-Fi shouldn't leave the plan blank.
+    // stale-while-revalidate: answer from the cache at once (instant, works offline), refresh it in the background.
+    // When the refreshed body differs, tell the open pages; js/app.js re-reads and shows "Plan updated".
+    // No cached copy yet → plain network (and cache it).
+    var revalidate = caches.open(VERSION).then(function (c) {
+      return c.match(req, { ignoreSearch: true }).then(function (hit) {
+        return fetch(req, { cache: 'no-cache' }).then(function (r) {
+          if (!r.ok) return hit || r;
+          var fresh = r.clone();
+          return (hit ? hit.clone().text() : Promise.resolve(null)).then(function (old) {
+            return fresh.clone().text().then(function (now) {
+              return c.put(req, fresh).then(function () {
+                if (hit && old !== now) notifyData(url.pathname);
+                return hit ? null : r;
+              });
+            });
+          });
+        });
+      });
+    });
     e.respondWith(caches.open(VERSION).then(function (c) {
       return c.match(req, { ignoreSearch: true }).then(function (hit) {
-        var net = fetch(req, { cache: 'no-cache' }).then(function (r) { if (r.ok) c.put(req, r.clone()); return r; });
-        if (!hit) return net;
-        var timer = new Promise(function (res) { setTimeout(function () { res(hit); }, 3000); });
-        return Promise.race([net.catch(function () { return hit; }), timer]);
+        if (hit) { e.waitUntil(revalidate.catch(function () {})); return hit; }
+        return revalidate.then(function (r) { return r || fetch(req); });
       });
     }));
     return;
@@ -48,6 +63,9 @@ self.addEventListener('fetch', function (e) {
     });
   }).catch(function () { return fetch(req); }));
 });
+function notifyData(path) {
+  return self.clients.matchAll({ type: 'window' }).then(function (cs) { cs.forEach(function (cl) { cl.postMessage({ type: 'jp27-data', path: path }); }); });
+}
 self.addEventListener('notificationclick', function (e) {
   e.notification.close();
   e.waitUntil(self.clients.matchAll({ type: 'window' }).then(function (cs) { if (cs[0]) return cs[0].focus(); return self.clients.openWindow('./'); }));

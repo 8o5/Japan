@@ -1,25 +1,30 @@
 /* Japan 2027 · Nic & Elly — warm, airy, big type. System fonts only. */
 :root{
-  --canvas:#FBF7F1; --canvas-2:#F4EEE5; --card:#FFFFFF; --ink:#1E1915; --ink-2:#655B51; --ink-3:#716659;
+  --canvas:#FBF7F1; --canvas-2:#F4EEE5; --card:#FFFFFF; --ink:#1E1915; --ink-2:#655B51; --ink-3:#6A5F53;
   --line:rgba(60,40,20,.11); --line-2:rgba(60,40,20,.2);
   --accent:#C2381F; --accent-2:#E8553A; --accent-wash:#FCE9E3; --on-accent:#FFFFFF;
   --indigo:#3F47B5; --indigo-wash:#ECEDFB;
   --ok:#1D6F42; --ok-bg:#E3F2E8; --amber:#8A4E00; --amber-bg:#FFF0D2;
   --alert:#B3261E; --alert-bg:#FDE8E4; --info-bg:#F3EEE7;
   --nic:#0D6B7C; --elly:#9A2C82; --madi:#9A2C82;
-  --upd:#7A4FD0; --upd-bg:#F1EAFE;
+  --upd:#6F45C6; --upd-bg:#F1EAFE;
   --glass:rgba(251,247,241,.72);
   --shadow:0 1px 1px rgba(60,35,10,.04),0 6px 24px -6px rgba(60,35,10,.10);
   --shadow-lift:0 2px 4px rgba(60,35,10,.05),0 18px 40px -12px rgba(60,35,10,.18);
   --r-lg:22px; --r-md:16px; --r-sm:11px;
   --spring:cubic-bezier(.22,1.2,.36,1); --ease:cubic-bezier(.2,.8,.2,1);
+  /* motion system (video-tips pass): never linear; frequent = short, rare = a touch longer */
+  --ease-out:cubic-bezier(.23,1,.32,1); --ease-in-out:cubic-bezier(.65,0,.35,1);
+  --press-scale:.97; --press-scale-lg:.985; --press-ms:160ms; --quiet-ms:120ms;
+  --dur-fast:160ms; --dur:240ms; --dur-view:320ms; --dur-sheet:400ms;
+  --r-inner:10px; --r-xs:8px;
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI",system-ui,Roboto,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   --top-h:60px; --strip-h:0px;
   color-scheme:light;
 }
 :root[data-theme="dark"]{
-  --canvas:#15110E; --canvas-2:#1C1713; --card:#221C17; --ink:#F6EFE7; --ink-2:#C2B5A7; --ink-3:#978A7D;
+  --canvas:#15110E; --canvas-2:#1C1713; --card:#221C17; --ink:#F6EFE7; --ink-2:#C2B5A7; --ink-3:#A39689;
   --line:rgba(255,235,210,.10); --line-2:rgba(255,235,210,.2);
   --accent:#FF8A6B; --accent-2:#FF7352; --accent-wash:#3A1F18; --on-accent:#1A0F0B;
   --indigo:#A9AFFF; --indigo-wash:#252845;
@@ -34,7 +39,7 @@
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --canvas:#15110E; --canvas-2:#1C1713; --card:#221C17; --ink:#F6EFE7; --ink-2:#C2B5A7; --ink-3:#978A7D;
+    --canvas:#15110E; --canvas-2:#1C1713; --card:#221C17; --ink:#F6EFE7; --ink-2:#C2B5A7; --ink-3:#A39689;
     --line:rgba(255,235,210,.10); --line-2:rgba(255,235,210,.2);
     --accent:#FF8A6B; --accent-2:#FF7352; --accent-wash:#3A1F18; --on-accent:#1A0F0B;
     --indigo:#A9AFFF; --indigo-wash:#252845;
@@ -992,3 +997,186 @@ html.is-offline .brand .sun::after{content:"";position:absolute;right:-3px;botto
 .ref-copy .ref-ic{color:var(--ink-3);margin-left:4px;align-self:center;flex:none}
 .ref-copy:active{transform:scale(.97)}
 .ref-copy:focus-visible{outline:2px solid var(--accent,#c33);outline-offset:2px}
+
+/* =====================================================================
+   Video-tips pass (Nov 12 2026): one motion system, concentric radii, contrast, tabular numbers,
+   balanced headings, chunked confirmation codes, copy morph, skeletons, View Transitions.
+   Later rules here win over the older layered passes above on purpose.
+   ===================================================================== */
+
+/* --- press feedback: one scale, ease-out, < 300 ms, transform only (tip 20 / video 2) --- */
+.pill,.btn,.lk,.nb-go,.wx-chip,.diet-chip,.ref-copy,.row-link,.nc-nudge,.d-nav a,.iconbtn.x,.nc-trip,.nc-bags{
+  transition:transform var(--press-ms) var(--ease-out),background-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+.pill:active,.btn:active,.lk:active,.nb-go:active,.wx-chip:active,.diet-chip:active,.ref-copy:active,.row-link:active,.nc-nudge:active,.d-nav a:active,.iconbtn.x:active{transform:scale(var(--press-scale))}
+/* big surfaces press less (a 97% card looks like it jumps) */
+a.nc-row,.nc-trip,.nc-bags,.ov-days a,.ov-route li a,.refs-i[href]{transition:transform var(--press-ms) var(--ease-out),background-color var(--dur-fast) var(--ease-out)}
+a.nc-row:active,.nc-trip:active,.nc-bags:active,.ov-days a:active,.ov-route li a:active,a.refs-i:active{transform:scale(var(--press-scale-lg))}
+/* frequent chrome animates least: tab bar, theme / You buttons, day strip, party filter */
+.tabbar a{transition:color var(--quiet-ms) var(--ease-out),opacity var(--quiet-ms) var(--ease-out)}
+.tabbar .tb-i{transition:none}
+.tabbar a:active .tb-i{transform:none}
+.tabbar a:active{opacity:.55}
+.iconbtn{transition:background-color var(--quiet-ms) var(--ease-out),opacity var(--quiet-ms) var(--ease-out)}
+.iconbtn:active{transform:none;opacity:.55}
+.iconbtn.x:active{opacity:1}
+.strip a{transition:background-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out),transform var(--quiet-ms) var(--ease-out)}
+.strip a:active{transform:scale(var(--press-scale))}
+.party-f button{transition:background-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+.views a{transition:background-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+/* disclosures, reveals, views: slow-in/slow-out, under ~300 ms (views ≤ 320 ms) */
+.more>summary::after,.blk.opt>summary::after,.dnotes>summary::after,.grp>summary::after{transition:transform var(--dur) var(--ease-out)}
+.more-b,.grp-b{animation-duration:var(--dur);animation-timing-function:var(--ease-out)}
+.stop{transition:box-shadow var(--dur) var(--ease-out),transform var(--dur) var(--ease-out),opacity var(--dur) var(--ease-out)}
+.rv{transition:opacity var(--dur-view) var(--ease-out),transform var(--dur-view) var(--ease-out)}
+.view.enter{animation:viewin var(--dur-view) var(--ease-out)}
+.view.enter-l{animation:viewl var(--dur-view) var(--ease-out)}
+.view.enter-r{animation:viewr var(--dur-view) var(--ease-out)}
+#view{transition:transform 280ms var(--ease-out)}
+.nextbar{transition:transform var(--dur-view) var(--ease-out),opacity var(--dur) var(--ease-out)}
+.plan-toast{transition:opacity var(--dur) var(--ease-out),transform var(--dur) var(--ease-out)}
+.msg-pop[open]{animation:msgpop .34s var(--spring)}
+.nc-row{transition:background-color var(--dur-fast) var(--ease-out),transform var(--press-ms) var(--ease-out)}
+
+/* --- calmer live dot: opacity breathing, no glow ring (tip 13) --- */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.w-h .live,.nc-clock .live{box-shadow:none;animation:pulse 2.4s var(--ease-in-out) infinite}
+
+/* --- skeleton shimmer: eased, not linear (video 2) --- */
+.skel span,.sk{animation:shimmer 1.6s var(--ease-in-out) infinite}
+.sk{display:block;border-radius:var(--r-xs);background:linear-gradient(90deg,var(--canvas-2) 0,var(--line) 50%,var(--canvas-2) 100%);background-size:200% 100%}
+.wx-sk .wx-row{gap:14px}
+.wx-sk .sk-ic{width:40px;height:40px;border-radius:50%}
+.wx-sk .sk-t{width:84px;height:30px}
+.wx-sk .sk-s{width:120px;height:14px;margin-top:8px}
+.wx-sk .wx-d .sk{height:52px;border-radius:var(--r-inner)}
+.wx-chip.sk{width:86px;cursor:default;color:transparent}
+
+/* --- concentric corners: inner = outer − padding, never sharper than 8–10 px (tip 14) --- */
+.nowcard{border-radius:26px}
+.nowcard .nc-row,.nowcard .nc-bags,.nowcard .nc-trip{border-radius:12px}   /* 26 − (20 − 6 bleed) */
+.nowcard .leave,.nowcard .nc-way{border-radius:var(--r-inner)}            /* 26 − 20 → clamp 10 */
+.nc-nudge{border-radius:0 0 12px 12px}
+.fls,.s-board{border-radius:var(--r-inner)}                                /* 22 − 18/16 → clamp 10 */
+.ref{border-radius:var(--r-inner)}
+.qc-i{border-radius:var(--r-xs)}                                           /* 16 − 14 → clamp 8 */
+.wx-d div{border-radius:var(--r-inner)}
+.sheet .diet-card,.sheet .ppl-i,.sheet .row-link{border-radius:12px}       /* 26 − 22 → clamp 12 */
+.nb-go{border-radius:14px}                                                 /* 20 − 6 */
+.fig{border-radius:var(--r-inner)}
+
+/* --- contrast: no opacity dimming of text below AA (tip 15) --- */
+.it.is-past .stop{opacity:.9}
+.stop.moved{opacity:.9}
+.ppl-i.off,.ppl-i.stale{opacity:1}
+.ppl-i.off .ppl-n,.ppl-i.stale .ppl-n{color:var(--ink-2)}
+.leave small,.leave.soon small{opacity:1}
+.strip a[aria-current="page"] .s-w,.strip a[aria-current="page"] .s-c{opacity:.8}
+
+/* --- CTA hierarchy: Navigate is the one filled accent on a stop; planner primary links stay quiet (tip 10) --- */
+.lk-t{background:var(--canvas-2);color:var(--accent)}
+.lk-t:hover{background:var(--line-2);filter:none}
+/* "Start" label: an accent word, not a filled red badge competing with Navigate (tip 1/10) */
+.d-start .k{background:none;color:var(--accent);padding:0;border-radius:0;margin-right:8px;vertical-align:1px}
+/* overview route numbers: tinted, not filled */
+.ov-route li a::before{background:var(--accent-wash);color:var(--accent)}
+
+/* --- icons: one stroke weight in the chrome (tip 12) --- */
+.tabbar .tb-i{stroke-width:1.8}
+.tabbar a[aria-current="page"] .tb-i{stroke-width:2.1}
+.ref-ic,.ref-ok-i{stroke-width:1.8}
+.iconbtn.x .i{width:16px;height:16px;stroke-width:2.2}
+
+/* --- balanced headings, pretty body (tip 16) --- */
+.d-title,.blk-h,.p-title,.p-h,.s-name,.now-big,.sheet-h h2,.empty h2,.shell-wait h1,.cf-box h2,.refs-box h2,.ov-c,.ov-dt,.nc-n,.bk-what,.refs-n,.wel-t,.msg-pop-in h2,.first h2{text-wrap:balance}
+.p-lead,.d-start2,.s-act,.nt-t,.leg-t,.glance-n,.bk-n,.nc-start,.p-para,.prose p,.dr-v p{text-wrap:pretty}
+
+/* --- tabular numbers on everything that ticks or lines up (tip 18) --- */
+.nc-m,.nc-lt,.nc-ot,.nc-badge,.nb-k,.leave,.dl-w,.bk-when,.ov-md,.ov-dates,.refs-d,.glance li,.s-meta,.nc-mini-t,.mockbar,.nc-tz,.wx-d,.d-start,.it-t,.nc-go,.ov-dd,.rail .r-d,.strip .s-d,.wx-t,.wx-chip,.now-big,.nc-clock{font-variant-numeric:tabular-nums}
+
+/* --- optical alignment (tip 17) --- */
+.refs-d{margin-left:0}                                       /* dates sat 8 px right of the name */
+.strip a{position:relative}
+.strip a.is-today::after{position:absolute;left:50%;bottom:3px;margin:0;transform:translateX(-50%)} /* dot no longer pushes today's tile taller */
+.nc-badge{margin-top:-1px}
+.chev{display:inline-block;transform:translateY(-1px)}
+
+/* --- hit areas ≥ 44 pt with invisible slop where the look stays compact (Fitts) --- */
+.wx-chip{position:relative}
+.wx-chip::after{content:"";position:absolute;inset:-6px -2px}
+.nc-more,.nc-later a,.ppl-map,.ov-foot a{min-height:44px}
+.ppl-map,.ov-foot a{display:inline-flex;align-items:center}
+.nc-other{padding:12px 0;margin-top:0}
+.diet-chip::after{inset:-6px 0}
+
+/* --- confirmation codes: chunked for reading, raw for copying (Miller) --- */
+.cc+.cc{margin-left:.38em}
+.ref-c{font-variant-numeric:normal;letter-spacing:.03em}
+.ref-copy{position:relative;gap:6px}
+.ref-copy .ref-ok-i{display:none}
+.ref-copy .ref-ic,.ref-copy .ref-ok-i{width:15px;height:15px;flex:none;align-self:center}
+.ref-copy.is-copied{background:var(--ok-bg)}
+.ref-copy.is-copied .ref-k,.ref-copy.is-copied .ref-c,.ref-copy.is-copied .ref-ok-i{color:var(--ok)}
+.ref-copy.is-copied .ref-ic{display:none}
+.ref-copy.is-copied .ref-ok-i{display:block;animation:okpop 300ms var(--spring)}
+@keyframes okpop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.12);opacity:1}100%{transform:none}}
+.ref-copy.is-copied:active{transform:none}
+
+/* --- sheets: drag from anywhere at the top of the content, snap back smoothly; fix close on phones --- */
+.sheet{transition:transform 280ms var(--ease-out)}
+.sheet[open]{animation:sheet var(--dur-sheet) var(--spring)}
+.sheet[open].closing{animation:sheetout 240ms var(--ease-out) forwards}
+.sheet[open].closing::backdrop{animation:fadeout 240ms var(--ease-out) forwards}
+@media (min-width:760px){
+  .sheet[open]{animation:pop 300ms var(--spring)}
+  .sheet[open].closing{animation:popout 200ms var(--ease-out) forwards}
+}
+
+/* --- continuous (squircle) corners where supported; plain radius elsewhere (video 3) --- */
+@supports (corner-shape:squircle){
+  .w,.stop,.nowcard,.sheet,.refs-box,.cf-box,.ov-box,.bk,.grp,.dnotes,.leg,.nt,.fls,.s-board,.qc,.qc-i,.nc-row,.nc-way,.nc-bags,.nc-trip,.wx-d div,.ov-days a,.ov-route li a,.msg-pop-in,.nextbar,.nb-go,.d-nav a,.first,.ref{corner-shape:squircle}
+}
+
+/* --- command menu (desktop only, ⌘K / Ctrl+K): a small jump list, nothing else --- */
+.kbd-hint{display:none}
+@media (min-width:760px) and (hover:hover) and (pointer:fine){ .kbd-hint{display:inline;color:var(--ink-3)} }
+.cmdk{border:0;padding:0;margin:14vh auto auto;width:min(520px,calc(100% - 48px));border-radius:18px;background:var(--card);color:var(--ink);box-shadow:var(--shadow-lift)}
+.cmdk::backdrop{background:rgba(20,12,6,.3)}
+.cmdk[open]{animation:pop 200ms var(--ease-out)}
+.cmdk input{display:block;width:100%;min-height:52px;padding:0 18px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:1.059rem;outline:none;border-radius:18px 18px 0 0}
+.cmdk ul{list-style:none;margin:0;padding:6px;max-height:52vh;overflow:auto}
+.cmdk li a{display:flex;align-items:baseline;gap:12px;min-height:44px;padding:10px 12px;border-radius:12px;color:var(--ink);text-decoration:none;font-size:.941rem}
+.cmdk li a .cm-k{flex:none;min-width:4.6em;font-size:.794rem;font-weight:600;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.cmdk li a[aria-selected="true"]{background:var(--canvas-2)}
+.cmdk .cm-none{padding:14px 12px;color:var(--ink-2);font-size:.882rem}
+@media (max-width:759px){ .cmdk{display:none!important} }
+
+/* --- View Transitions: chrome stays put, content slides/fades; reduced motion = none --- */
+.top{view-transition-name:jp-top}
+.tabbar{view-transition-name:jp-tabbar}
+.side{view-transition-name:jp-side}
+.rail{view-transition-name:jp-rail}
+::view-transition-group(jp-top),::view-transition-group(jp-tabbar),::view-transition-group(jp-side),::view-transition-group(jp-rail){animation:none}
+::view-transition-old(jp-top),::view-transition-old(jp-tabbar),::view-transition-old(jp-side),::view-transition-old(jp-rail){display:none}
+::view-transition-new(jp-top),::view-transition-new(jp-tabbar),::view-transition-new(jp-side),::view-transition-new(jp-rail){animation:none}
+::view-transition-old(root){animation:vt-out 140ms var(--ease-out) both}
+::view-transition-new(root){animation:vt-in 260ms var(--ease-out) both}
+html[data-vt="r"]::view-transition-old(root){animation:vt-out-l 200ms var(--ease-out) both}
+html[data-vt="r"]::view-transition-new(root){animation:vt-in-r 280ms var(--ease-out) both}
+html[data-vt="l"]::view-transition-old(root){animation:vt-out-r 200ms var(--ease-out) both}
+html[data-vt="l"]::view-transition-new(root){animation:vt-in-l 280ms var(--ease-out) both}
+@keyframes vt-out{to{opacity:0}}
+@keyframes vt-in{from{opacity:0;transform:translateY(8px)}}
+@keyframes vt-out-l{to{opacity:0;transform:translateX(-24px)}}
+@keyframes vt-out-r{to{opacity:0;transform:translateX(24px)}}
+@keyframes vt-in-r{from{opacity:0;transform:translateX(28px)}}
+@keyframes vt-in-l{from{opacity:0;transform:translateX(-28px)}}
+
+@media (prefers-reduced-motion:reduce){
+  ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}
+  .sheet{transition:none}
+  .pill:active,.btn:active,.lk:active,.nb-go:active,.wx-chip:active,.diet-chip:active,.ref-copy:active,.row-link:active,.nc-nudge:active,.d-nav a:active,.strip a:active,a.nc-row:active,.nc-trip:active,.nc-bags:active,.ov-days a:active,.ov-route li a:active,a.refs-i:active,.iconbtn.x:active{transform:none}
+}
+/* strip: room under the city for today's dot, the same on every tile so they stay one height */
+.strip a{padding-bottom:10px}
+.strip a.is-today::after{bottom:4px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}

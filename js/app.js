@@ -80,6 +80,21 @@
     bell: '<path d="M18 9.5a6 6 0 0 0-12 0c0 6.5-2.5 8-2.5 8h17S18 16 18 9.5"/><path d="M10.2 20.5a2 2 0 0 0 3.6 0"/>'
   };
   function svgI(k) { return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + (SVG[k] || '') + '</svg>'; }
+  /* Confirmation codes, display only (Miller's law): codes that already carry "-" or spaces stay as written; others
+     (6+ chars) split into the fewest groups of ≤ 4, as even as possible, longer groups first: FBGFCR → FBG FCR,
+     3523223096 → 3523 223 096. The gap is CSS margin between spans, so selecting / copying still gives the raw code. */
+  function chunkCode(code) {
+    code = String(code == null ? '' : code);
+    if (/[\s-]/.test(code) || code.length < 6) return [code];
+    var n = Math.ceil(code.length / 4), base = Math.floor(code.length / n), extra = code.length % n, out = [], i = 0;
+    for (var g = 0; g < n; g++) { var len = base + (g < extra ? 1 : 0); out.push(code.slice(i, i + len)); i += len; }
+    return out;
+  }
+  function codeHTML(code) { return '<span class="ref-c">' + chunkCode(code).map(function (c) { return '<span class="cc">' + esc(c) + '</span>'; }).join('') + '</span>'; }
+  var COPY_I = '<svg class="ref-ic" aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>' +
+    '<svg class="ref-ok-i" aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  /* tap-to-copy chip: shows the chunked code, copies the raw one (data-copy) */
+  function copyRefHTML(r) { return '<button type="button" class="ref ref-copy" data-copy="' + esc(r.code) + '" data-label="' + esc(r.label) + '" aria-label="Copy ' + esc(r.label) + ' ' + esc(r.code) + '"><span class="ref-k">' + esc(r.label) + '</span>' + codeHTML(r.code) + COPY_I + '</button>'; }
   var FLAG_IC = { access: '🎟️', ok: '✅', diet: '⚠️', act: '📅', deadline: '⏰', time: '⏰', info: '💡', alert: '⚠️' };
   var STATUS_IC = { booked: '✅', walkin: '🚶', target: '🎯', plan: '📌', moved: '↪️' };
   var TYPE_IC = [
@@ -309,7 +324,11 @@
     if (!WX.city) {
       return compact ? '' : '<section class="w" aria-label="Weather"><h2 class="w-h">Weather</h2><p class="now-sub">Forecasts load automatically from two weeks before the trip.</p><div class="w-act"><button class="btn" data-act="wx">Check ' + esc(wxCity()) + ' now</button></div><p class="fine">Open-Meteo · no tracking.</p></section>';
     }
-    if (WX.loading && !WX.data) return compact ? '' : '<section class="w"><h2 class="w-h">Weather · ' + esc(WX.city) + '</h2><p class="now-sub">Loading…</p></section>';
+    if (WX.loading && !WX.data) { // skeleton in the card's own shape (no "Loading…" text)
+      if (compact) return '<span class="wx-chip sk" aria-hidden="true"></span>';
+      return '<section class="w wx-sk" aria-busy="true" aria-label="Weather · ' + esc(WX.city) + ', loading"><h2 class="w-h">Weather · ' + esc(WX.city) + '</h2><div class="wx-row"><span class="sk sk-ic"></span><div><span class="sk sk-t"></span><span class="sk sk-s"></span></div></div>' +
+        '<div class="wx-d" aria-hidden="true">' + new Array(8).join('<span class="sk"></span>') + '</div></section>';
+    }
     var d = WX.data;
     if (!d) return compact ? '' : '<section class="w"><h2 class="w-h">Weather · ' + esc(WX.city) + '</h2><p class="now-sub">' + esc(WX.err || 'No forecast yet') + '</p><div class="w-act"><button class="btn" data-act="wx">Try again</button></div></section>';
     var cur = d.current || {}, w = WMO[cur.weather_code] || ['🌡️', ''];
@@ -612,7 +631,7 @@
     document.body.classList.toggle('has-next', !!pick);
     if (!pick) { bar.innerHTML = ''; bar.classList.remove('show'); return; }
     var t = navTarget(pick.s.stop), nm = navName(pick.s.stop);
-    bar.innerHTML = '<a class="nb-i" href="#d' + st.day + '" data-jump="' + pick.s.uid + '"><span class="nb-k">' + esc(pick.k) + ' · Navigate to</span><span class="nb-n">' + esc(nm) + '</span></a>' +
+    bar.innerHTML = '<a class="nb-i" href="#d' + st.day + '" data-jump="' + pick.s.uid + '"><span class="nb-k">' + esc(pick.k) + '</span><span class="nb-n">' + esc(nm) + '</span></a>' +
       '<a class="nb-go" href="' + esc(dirURL(t)) + '" target="_blank" rel="noopener" aria-label="Navigate to ' + esc(nm) + '">' + svgI('nav') + '<span class="nb-gt">Go</span></a>';
     nextBarVis();
   }
@@ -665,7 +684,7 @@
     var board = s._day ? transitLines({ stop: s, day: s._day }).filter(function (c) { return !(dayObj(s._day).start2 || []).some(function (h) { return plain(h).indexOf(c) >= 0; }) && !routeHas(s, c); }) : [];
     if (board.length) h += '<div class="s-board"><span class="sb-k">' + ic('🚉') + 'Boarding</span><ul>' + board.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ul></div>';
     var refs = refsOf(s).filter(function (r) { return (s.flags || []).map(function (f) { return plain(f.html); }).join(' ').indexOf(r.code) < 0; });
-    if (refs.length) h += '<p class="s-refs">' + refs.map(function (r) { return '<span class="ref"><span class="ref-k">' + esc(r.label) + '</span> <span class="ref-c">' + esc(r.code) + '</span></span>'; }).join('') + '</p>';
+    if (refs.length) h += '<p class="s-refs">' + refs.map(copyRefHTML).join('') + '</p>';
     h += dietChip(s);
     if (s.meta && s.meta.length) h += '<p class="s-meta">' + s.meta.map(function (m) {
       return '<span' + (m.who ? ' class="who w-' + esc(m.who) + '"' : '') + '>' + (/^Open\b|^Always open/.test(m.text) ? ic('🕘') : '') + esc(m.text) + '</span>'; }).join('') + '</p>';
@@ -821,7 +840,7 @@
       '<p class="ov-legend"><span class="st st-booked">' + ic('✅') + 'Booked</span><span class="st st-target">' + ic('🎯') + 'Target</span><span class="st st-walkin">' + ic('🚶') + 'Walk-in</span><span class="st">' + ic('📌') + 'Plan</span></p>' +
       '<p class="fine">Everything without “Booked” is flexible. ~ before a time means about.</p><div class="w-act"><a class="btn" href="#bookings">All bookings</a></div></section>';
     h += '<details class="grp ov-gl"><summary><span>Words you’ll see</span></summary><dl class="gl">' + GLOSSARY.map(function (g) { return '<dt>' + esc(g[0]) + '</dt><dd>' + esc(g[1]) + '</dd>'; }).join('') + '</dl></details>';
-    h += '<p class="ov-foot"><a href="#sources">Sources</a> · <a href="#prep">Prep</a> · <a href="#watch">Watch list</a></p>';
+    h += '<p class="ov-foot"><a href="#sources">Sources</a> · <a href="#prep">Prep</a> · <a href="#watch">Watch list</a><span class="kbd-hint"> · ' + (/Mac|iP(hone|ad)/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl+K') + ' to jump</span></p>';
     return h;
   }
   function meLinks() {
@@ -834,11 +853,11 @@
     var h = '<header class="p-hero"><h1 class="p-title">' + esc(p.title) + '</h1>' + (p.lead ? '<p class="p-lead">' + esc(p.lead) + '</p>' : '') + '</header>';
     if (p.id === 'bookings') {
       var R = allRefs(), CI = (CONFS && CONFS.items) || [], CM = (CONFS && CONFS.missing) || [];
-      var copyRef = function (r) { return '<button type="button" class="ref ref-copy" data-copy="' + esc(r.code) + '" aria-label="Copy ' + esc(r.label) + ' ' + esc(r.code) + '"><span class="ref-k">' + esc(r.label) + '</span> <span class="ref-c">' + esc(r.code) + '</span><svg class="ref-ic" aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>'; };
+      var copyRef = copyRefHTML;
       if (R.length || CI.length) h += '<section class="refs-box" aria-label="Booking references"><h2>' + ic('🎫') + 'Booking references</h2>' +
         CI.map(function (c) { return '<div class="refs-i"><span class="refs-n">' + esc(c.name) + '<span class="refs-d">' + esc(c.dates) + (c.provider ? ' · ' + esc(c.provider) : '') + '</span></span>' + (c.refs || []).map(copyRef).join('') + '</div>'; }).join('') + R.map(function (x) {
         return '<a class="refs-i" href="#d' + x.day + '" data-jump="' + x.s.uid + '"><span class="refs-n">' + esc(x.s.stop.name) + '<span class="refs-d">' + esc(dayObj(x.day).eyebrow.split(' · ')[0]) + ' · ' + esc(x.s.stop.time) + '</span></span>' +
-          x.refs.map(function (r) { return '<span class="ref"><span class="ref-k">' + esc(r.label) + '</span> <span class="ref-c">' + esc(r.code) + '</span></span>'; }).join('') + '</a>';
+          x.refs.map(function (r) { return '<span class="ref"><span class="ref-k">' + esc(r.label) + '</span> ' + codeHTML(r.code) + '</span>'; }).join('') + '</a>';
       }).join('') + (CI.length ? (CM.length ? '<p class="fine">Not in email yet: ' + CM.map(function (m) { return esc(m.name) + ' (' + esc(m.dates) + ') · see the ' + esc(m.where); }).join('; ') + '. Tap a number to copy it.</p>' : '<p class="fine">Tap a number to copy it.</p>') : '<p class="fine">Only these are written in the plan. Other confirmations are in your email.</p>') + '</section>';
     }
     var done = LS.get('bk', {}), inList = false;
@@ -905,10 +924,26 @@
     if (h === 'today') return { view: 'day', day: defaultDay(), today: true };
     return { view: 'day', day: lastDay || defaultDay() };
   }
-  var pendingJump = null, rendered = false, quietRender = false;
+  var pendingJump = null, rendered = false, quietRender = false, curVT = null, swipeHold = false;
+  /* View Transitions (tab / day changes): chrome stays, content cross-slides. Falls back to the .enter classes when
+     the API is missing; nothing at all with reduced motion. A new navigation skips the running one (interruptible). */
+  var hasVT = typeof document.startViewTransition === 'function';
   function render() {
     var prev = ROUTE; ROUTE = parseHash();
+    var animate = !reduceMotion && rendered && !quietRender;
+    if (curVT) { try { curVT.skipTransition(); } catch (e) {} curVT = null; }
+    if (animate && hasVT) {
+      var dirVT = (prev.view === 'day' && ROUTE.view === 'day' && prev.day !== ROUTE.day) ? (ROUTE.day > prev.day ? 'r' : 'l') : 'fade';
+      document.documentElement.setAttribute('data-vt', dirVT);
+      var vt = curVT = document.startViewTransition(function () { paint(prev, false); });
+      vt.finished.then(function () { if (curVT === vt) { curVT = null; document.documentElement.removeAttribute('data-vt'); } }, function () {});
+      return;
+    }
+    paint(prev, animate);
+  }
+  function paint(prev, animate) {
     var v = $('#view');
+    if (swipeHold) { swipeHold = false; v.style.transition = 'none'; v.style.transform = ''; void v.offsetWidth; v.style.transition = ''; }
     document.body.classList.toggle('v-panel', ROUTE.view !== 'day');
     if (ROUTE.view === 'day') {
       lastDay = ROUTE.day;
@@ -937,8 +972,8 @@
     });
     var sc = $('#strip a[aria-current]');
     if (sc) { var s = $('#strip'); s.scrollTo({ left: sc.offsetLeft - s.clientWidth / 2 + sc.clientWidth / 2, behavior: reduceMotion ? 'auto' : 'smooth' }); }
-    // motion
-    if (!reduceMotion && rendered && !quietRender) {
+    // motion (fallback when View Transitions aren't available)
+    if (animate) {
       v.classList.remove('enter', 'enter-l', 'enter-r'); void v.offsetWidth;
       var dir = (prev.view === 'day' && ROUTE.view === 'day' && prev.day !== ROUTE.day) ? (ROUTE.day > prev.day ? 'enter-r' : 'enter-l') : 'enter';
       v.classList.add(dir);
@@ -983,7 +1018,8 @@
     if (d.id === 'mesheet') SHEET.open = null;
     if (reduceMotion) { d.close(); return; }
     d.classList.add('closing');
-    setTimeout(function () { d.classList.remove('closing'); d.style.transform = ''; if (d.open) d.close(); }, 230);
+    d.style.animation = ''; d.style.transition = ''; // hand over from a drag to the close animation (starts where the finger left it)
+    setTimeout(function () { d.classList.remove('closing'); d.style.transform = ''; if (d.open) d.close(); }, 240);
   }
   window.JP27_closeSheet = closeSheet;
   function openInfo(kind) {
@@ -994,20 +1030,50 @@
     if (kind === 'wx' && !WX.data && !WX.loading) loadWeather(true);
     showSheet(d);
   }
+  /* Swipe-to-dismiss: from the handle / header any time, or from the content when it is scrolled to the top and the
+     first move is downward (an upward first move scrolls as usual). Grabbing a sheet mid-animation takes it from where
+     it is (interruptible). Release: > 90 px or a quick flick closes; otherwise it eases back. */
   function sheetDrag() {
-    var y0 = 0, dy = 0, d = null;
+    var y0 = 0, x0 = 0, dy = 0, base = 0, d = null, engaged = false, fromHead = false, lastY = 0, lastT = 0, vel = 0;
+    function engage(y) {
+      var m = getComputedStyle(d).transform, ty = 0;
+      if (m && m !== 'none') { var p = m.match(/matrix(3d)?\(([^)]+)\)/); if (p) { var n = p[2].split(','); ty = parseFloat(n[p[1] ? 13 : 5]) || 0; } }
+      base = Math.max(0, ty); d.style.animation = 'none'; d.style.transition = 'none'; d.style.transform = 'translateY(' + base + 'px)';
+      engaged = true; y0 = y; lastY = y; lastT = Date.now(); vel = 0;
+    }
     document.addEventListener('touchstart', function (e) {
-      var h = e.target.closest && e.target.closest('dialog.sheet .grab, dialog.sheet .sheet-h');
-      if (!h || e.target.closest('button')) { d = null; return; }
-      d = h.closest('dialog'); y0 = e.touches[0].clientY; dy = 0; d.style.transition = 'none';
+      d = null; engaged = false;
+      var dlg = e.target.closest && e.target.closest('dialog.sheet');
+      if (!dlg || e.touches.length !== 1 || dlg.classList.contains('closing') || e.target.closest('input,textarea,select,.fig,.wx-d')) return;
+      fromHead = !!e.target.closest('.grab, .sheet-h') && !e.target.closest('button');
+      var sc = dlg.querySelector('.sheet-in');
+      if (!fromHead && sc && sc.scrollTop > 0) return; // content is scrolled: let it scroll
+      d = dlg; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dy = 0;
+      if (fromHead) engage(y0);
     }, { passive: true });
     document.addEventListener('touchmove', function (e) {
-      if (!d) return; dy = Math.max(0, e.touches[0].clientY - y0); d.style.transform = 'translateY(' + dy + 'px)';
-    }, { passive: true });
-    document.addEventListener('touchend', function () {
-      if (!d) return; var dd = d; d = null; dd.style.transition = '';
-      if (dy > 90) closeSheet(dd); else dd.style.transform = '';
-    }, { passive: true });
+      if (!d) return;
+      var t = e.touches[0];
+      if (!engaged) {
+        var mx = t.clientX - x0, my = t.clientY - y0;
+        if (Math.abs(mx) < 6 && Math.abs(my) < 6) return;
+        if (my > 0 && Math.abs(my) > Math.abs(mx)) engage(t.clientY); else { d = null; return; }
+      }
+      e.preventDefault(); // the sheet moves, not the content behind/inside it
+      dy = Math.max(0, base + t.clientY - y0);
+      var now_ = Date.now(); if (now_ > lastT) { vel = (t.clientY - lastY) / (now_ - lastT); lastY = t.clientY; lastT = now_; }
+      d.style.transform = 'translateY(' + dy + 'px)';
+    }, { passive: false });
+    function end() {
+      if (!d) return; var dd = d; d = null;
+      if (!engaged) return; engaged = false;
+      dd.style.transition = '';
+      if (dy > 90 || (dy > 24 && vel > 0.5)) closeSheet(dd); else dd.style.transform = '';
+    }
+    document.addEventListener('touchend', end, { passive: true });
+    document.addEventListener('touchcancel', end, { passive: true });
+    // whichever way a sheet closes, the next open starts clean
+    document.addEventListener('close', function (e) { var t = e.target; if (t && t.matches && t.matches('dialog.sheet')) { t.style.animation = ''; t.style.transition = ''; t.style.transform = ''; t.classList.remove('closing'); } }, true);
   }
   function goToday() {
     lastDay = null; var st = state(), h = '#d' + defaultDay();
@@ -1042,6 +1108,7 @@
       if (t.hasAttribute('data-bk')) { var b = LS.get('bk', {}); if (t.checked) b[t.getAttribute('data-bk')] = 1; else delete b[t.getAttribute('data-bk')]; LS.set('bk', b); t.closest('.bk').classList.toggle('is-done', t.checked); renderLive(); }
     });
     document.addEventListener('keydown', function (e) {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'k' || e.key === 'K') && cmdOK()) { e.preventDefault(); var c = $('#cmdk'); if (c && c.open) c.close(); else openCmd(); return; }
       if (e.target.closest('input,textarea,select,[contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1);
     });
@@ -1060,8 +1127,12 @@
     }, { passive: true });
     V.addEventListener('touchend', function (e) {
       if (!ok) return; var t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+      var i = DAYS.indexOf(ROUTE.day) + (dx < 0 ? 1 : -1);
+      var nav = Math.abs(dx) > 70 && Math.abs(dy) < Math.abs(dx) * 0.6 && Date.now() - st < 800 && i >= 0 && i < DAYS.length;
+      // with View Transitions the page stays where the finger left it; the transition takes it from there
+      if (nav && hasVT && !reduceMotion && horiz) { swipeHold = true; go(dx < 0 ? 1 : -1); return; }
       V.style.transition = ''; V.style.transform = '';
-      if (Math.abs(dx) > 70 && Math.abs(dy) < Math.abs(dx) * 0.6 && Date.now() - st < 800) go(dx < 0 ? 1 : -1);
+      if (nav) go(dx < 0 ? 1 : -1);
     }, { passive: true });
     V.addEventListener('touchcancel', function () { V.style.transition = ''; V.style.transform = ''; }, { passive: true });
     // sheets: diet, You & alerts, weather (bottom sheets on phone; drag the handle down to close)
@@ -1069,8 +1140,10 @@
     $('#mebtn').addEventListener('click', function () { openInfo('me'); });
     document.addEventListener('click', function (e) {
       var b = e.target.closest && e.target.closest('[data-copy]'); if (!b) return;
-      e.preventDefault(); var v = b.getAttribute('data-copy');
-      var done = function () { toast('Copied ' + v); }, fail = function () { try { var r = document.createRange(); r.selectNodeContents(b.querySelector('.ref-c')); var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); document.execCommand('copy'); done(); } catch (x) { toast(v); } };
+      e.preventDefault(); var v = b.getAttribute('data-copy'); // always the raw code from the data, never the chunked display
+      var done = function () { copiedMorph(b); }, fail = function () {
+        try { var ta = document.createElement('textarea'); ta.value = v; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0'; document.body.appendChild(ta); ta.select(); var ok = document.execCommand('copy'); ta.remove(); if (ok) done(); else toast(v); } catch (x) { toast(v); }
+      };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(done, fail); else fail();
     });
     document.addEventListener('click', function (e) { if (e.target.matches && e.target.matches('dialog.sheet')) closeSheet(e.target); });
@@ -1138,6 +1211,16 @@
 
   /* ---------------- live plan updates ---------------- */
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  /* Copy success: the chip itself turns green with a check and says "Copied", then reverts (tip 20). */
+  function copiedMorph(b) {
+    var k = b.querySelector('.ref-k'), lbl = b.getAttribute('data-label') || (k && k.textContent) || '';
+    clearTimeout(b._cpT);
+    if (!b.classList.contains('is-copied')) b.style.minWidth = b.offsetWidth + 'px'; // the chip never shrinks mid-morph
+    b.classList.add('is-copied'); if (k) k.textContent = 'Copied';
+    var sr = $('#sr-copy'); if (!sr) { sr = document.createElement('p'); sr.id = 'sr-copy'; sr.className = 'sr'; sr.setAttribute('aria-live', 'polite'); document.body.appendChild(sr); }
+    sr.textContent = ''; setTimeout(function () { sr.textContent = 'Copied ' + lbl; }, 30);
+    b._cpT = setTimeout(function () { b.classList.remove('is-copied'); if (k) k.textContent = lbl; b.style.minWidth = ''; }, 1400);
+  }
   function toast(msg) {
     var t = document.getElementById('plan-toast');
     if (!t) {
@@ -1166,6 +1249,66 @@
     window.__trip = { trip: TRIP, state: state, overrides: function () { return TRIP._overrideReport; } };
   }
 
+  /* ---------------- stale-while-revalidate (static data mode) ----------------
+     sw.js serves data/*.json from cache at once and refreshes it in the background; when a newer body lands it posts
+     {type:'jp27-data'}. Re-read the three files (now fresh in the cache) and re-render only if the plan really changed. */
+  var DATA_FP = null, swrBusy = false;
+  function dataFp(r) { try { return JSON.stringify(r); } catch (e) { return null; } }
+  function revalidateData() {
+    if (CFG.dataSource === 'firestore' || !window.JP27.ready || swrBusy) return;
+    swrBusy = true;
+    Promise.all([getJSON('data/trip.json'), getJSON('data/overrides.json').catch(function () { return { overrides: [] }; }), getJSON('data/places.json').catch(function () { return {}; })])
+      .then(function (r) {
+        var fp = dataFp(r);
+        if (fp && DATA_FP && fp !== DATA_FP) { DATA_FP = fp; ingest(r[0], r[1], r[2], { updated: true }); }
+      }).catch(function () {}).then(function () { swrBusy = false; });
+  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'jp27-data') { clearTimeout(revalidateData._t); revalidateData._t = setTimeout(revalidateData, 400); }
+  });
+
+  /* ---------------- command menu (desktop, Cmd/Ctrl+K): jump to a view or a day; no search beyond this list ---------------- */
+  function cmdItems() {
+    var out = [['', 'Today', '#today'], ['', 'Days · the trip at a glance', '#trip']];
+    TRIP.panels.forEach(function (p) { out.push(['', p.title, '#' + p.id]); });
+    DAYS.forEach(function (n) { var d = dayObj(n); out.push([d.eyebrow.split(' · ')[0], d.title, '#d' + n]); });
+    return out;
+  }
+  function cmdOK() { return matchMedia('(min-width: 760px) and (hover: hover) and (pointer: fine)').matches; }
+  function openCmd() {
+    if (!TRIP || !cmdOK()) return;
+    var dlg = $('#cmdk');
+    if (!dlg) {
+      dlg = document.createElement('dialog'); dlg.id = 'cmdk'; dlg.className = 'cmdk'; dlg.setAttribute('aria-label', 'Jump to');
+      dlg.innerHTML = '<input type="text" id="cmdk-i" placeholder="Jump to a day or view…" autocomplete="off" spellcheck="false" aria-controls="cmdk-l" aria-label="Jump to"><ul id="cmdk-l" role="listbox"></ul>';
+      document.body.appendChild(dlg);
+      var inp = $('#cmdk-i', dlg), list = $('#cmdk-l', dlg), sel = 0;
+      var draw = function () {
+        var q = inp.value.trim().toLowerCase(), items = cmdItems().filter(function (x) { return !q || (x[0] + ' ' + x[1]).toLowerCase().indexOf(q) >= 0; });
+        sel = Math.min(sel, Math.max(0, items.length - 1));
+        list.innerHTML = items.length ? items.map(function (x, i) { return '<li><a href="' + x[2] + '" role="option" aria-selected="' + (i === sel) + '">' + (x[0] ? '<span class="cm-k">' + esc(x[0]) + '</span>' : '') + '<span>' + esc(x[1]) + '</span></a></li>'; }).join('') : '<li class="cm-none">No match</li>';
+        var on = $('[aria-selected="true"]', list); if (on) on.scrollIntoView({ block: 'nearest' });
+      };
+      dlg._draw = function () { sel = 0; draw(); };
+      inp.addEventListener('input', function () { sel = 0; draw(); });
+      inp.addEventListener('keydown', function (e) {
+        var n = $$('a', list).length;
+        if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(n - 1, sel + 1); draw(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(0, sel - 1); draw(); }
+        else if (e.key === 'Enter') { e.preventDefault(); var a = $('[aria-selected="true"]', list); if (a) a.click(); }
+      });
+      list.addEventListener('click', function (e) {
+        var a = e.target.closest('a'); if (!a) return;
+        e.preventDefault(); dlg.close();
+        if (a.getAttribute('href') === '#today') goToday(); else location.hash = a.getAttribute('href');
+      });
+      dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    }
+    $('#cmdk-i').value = ''; dlg._draw();
+    if (!dlg.open) dlg.showModal();
+    $('#cmdk-i').focus();
+  }
+
   /* ---------------- boot ---------------- */
   function getJSON(u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); }); }
   window.JP27 = { renderLive: function () { if (TRIP) renderLive(); }, now: now, ls: LS, state: function () { return TRIP ? state() : null }, ready: false,
@@ -1192,6 +1335,7 @@
       return Promise.all([getJSON('data/trip.json'), getJSON('data/overrides.json').catch(function () { return { overrides: [] }; }), getJSON('data/places.json').catch(function () { return {}; })]);
     }).then(function (r) {
       document.body.classList.remove('v-shell');
+      if (CFG.dataSource !== 'firestore') DATA_FP = dataFp(r);
       TRIP = clone(r[0]); OVERRIDES = Array.isArray(r[1]) ? r[1] : (r[1].overrides || []); CONFS = (!Array.isArray(r[1]) && r[1].confirmations) || null; PLACES = r[2].places || {}; CITIES = r[2].cities || {};
       applyOverrides(); indexTrip(); buildNav(); bind(); render();
       $('#dietbtn').hidden = false; // only once a plan is loaded (app-shell mode starts without one)
