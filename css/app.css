@@ -985,3 +985,10 @@ html.is-offline .brand .sun::after{content:"";position:absolute;right:-3px;botto
 @media (min-width:760px){ .nc-act .btn-nav{flex:1 1 auto} }
 .top{background:color-mix(in srgb,var(--canvas) 92%,transparent)}
 .diet-chip{min-height:44px}
+
+/* booking confirmations: tap-to-copy */
+.ref-copy{border:0;font-family:inherit;color:inherit;cursor:pointer;min-height:44px;align-items:center;-webkit-tap-highlight-color:transparent}
+.ref-copy .ref-c{user-select:none;-webkit-user-select:none}
+.ref-copy .ref-ic{color:var(--ink-3);margin-left:4px;align-self:center;flex:none}
+.ref-copy:active{transform:scale(.97)}
+.ref-copy:focus-visible{outline:2px solid var(--accent,#c33);outline-offset:2px}

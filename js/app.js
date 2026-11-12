@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var CFG = window.APP_CONFIG || {};
-  var TRIP = null, PLACES = {}, CITIES = {}, OVERRIDES = [];
+  var TRIP = null, PLACES = {}, CITIES = {}, OVERRIDES = [], CONFS = null;
   var DAYS = [], STOPS = {}, FLAT = {}; // STOPS[day] = [{uid, stop, t(ms|null)}]; FLAT[day] = stops + routes in planner order
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
@@ -833,11 +833,13 @@
   function panelHTML(p) {
     var h = '<header class="p-hero"><h1 class="p-title">' + esc(p.title) + '</h1>' + (p.lead ? '<p class="p-lead">' + esc(p.lead) + '</p>' : '') + '</header>';
     if (p.id === 'bookings') {
-      var R = allRefs();
-      if (R.length) h += '<section class="refs-box" aria-label="Booking references"><h2>' + ic('🎫') + 'Booking references</h2>' + R.map(function (x) {
+      var R = allRefs(), CI = (CONFS && CONFS.items) || [], CM = (CONFS && CONFS.missing) || [];
+      var copyRef = function (r) { return '<button type="button" class="ref ref-copy" data-copy="' + esc(r.code) + '" aria-label="Copy ' + esc(r.label) + ' ' + esc(r.code) + '"><span class="ref-k">' + esc(r.label) + '</span> <span class="ref-c">' + esc(r.code) + '</span><svg class="ref-ic" aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>'; };
+      if (R.length || CI.length) h += '<section class="refs-box" aria-label="Booking references"><h2>' + ic('🎫') + 'Booking references</h2>' +
+        CI.map(function (c) { return '<div class="refs-i"><span class="refs-n">' + esc(c.name) + '<span class="refs-d">' + esc(c.dates) + (c.provider ? ' · ' + esc(c.provider) : '') + '</span></span>' + (c.refs || []).map(copyRef).join('') + '</div>'; }).join('') + R.map(function (x) {
         return '<a class="refs-i" href="#d' + x.day + '" data-jump="' + x.s.uid + '"><span class="refs-n">' + esc(x.s.stop.name) + '<span class="refs-d">' + esc(dayObj(x.day).eyebrow.split(' · ')[0]) + ' · ' + esc(x.s.stop.time) + '</span></span>' +
           x.refs.map(function (r) { return '<span class="ref"><span class="ref-k">' + esc(r.label) + '</span> <span class="ref-c">' + esc(r.code) + '</span></span>'; }).join('') + '</a>';
-      }).join('') + '<p class="fine">Only these are written in the plan. Other confirmations are in your email.</p></section>';
+      }).join('') + (CI.length ? (CM.length ? '<p class="fine">Not in email yet: ' + CM.map(function (m) { return esc(m.name) + ' (' + esc(m.dates) + ') · see the ' + esc(m.where); }).join('; ') + '. Tap a number to copy it.</p>' : '<p class="fine">Tap a number to copy it.</p>') : '<p class="fine">Only these are written in the plan. Other confirmations are in your email.</p>') + '</section>';
     }
     var done = LS.get('bk', {}), inList = false;
     p.parts.forEach(function (x) {
@@ -1065,6 +1067,12 @@
     // sheets: diet, You & alerts, weather (bottom sheets on phone; drag the handle down to close)
     $('#dietbtn').addEventListener('click', function () { $('#diet-b').innerHTML = dietHTML(); showSheet($('#dietsheet')); });
     $('#mebtn').addEventListener('click', function () { openInfo('me'); });
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-copy]'); if (!b) return;
+      e.preventDefault(); var v = b.getAttribute('data-copy');
+      var done = function () { toast('Copied ' + v); }, fail = function () { try { var r = document.createRange(); r.selectNodeContents(b.querySelector('.ref-c')); var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); document.execCommand('copy'); done(); } catch (x) { toast(v); } };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(done, fail); else fail();
+    });
     document.addEventListener('click', function (e) { if (e.target.matches && e.target.matches('dialog.sheet')) closeSheet(e.target); });
     document.addEventListener('cancel', function (e) { if (e.target.matches && e.target.matches('dialog.sheet')) { e.preventDefault(); closeSheet(e.target); } }, true);
     sheetDrag();
@@ -1146,6 +1154,7 @@
     opts = opts || {};
     TRIP = clone(trip);
     OVERRIDES = Array.isArray(overrides) ? overrides : ((overrides && overrides.overrides) || []);
+    CONFS = (overrides && !Array.isArray(overrides) && overrides.confirmations) || null;
     if (places && places.places) { PLACES = places.places; CITIES = places.cities || CITIES || {}; }
     else { PLACES = places || PLACES || {}; }
     applyOverrides(); indexTrip();
@@ -1183,7 +1192,7 @@
       return Promise.all([getJSON('data/trip.json'), getJSON('data/overrides.json').catch(function () { return { overrides: [] }; }), getJSON('data/places.json').catch(function () { return {}; })]);
     }).then(function (r) {
       document.body.classList.remove('v-shell');
-      TRIP = clone(r[0]); OVERRIDES = Array.isArray(r[1]) ? r[1] : (r[1].overrides || []); PLACES = r[2].places || {}; CITIES = r[2].cities || {};
+      TRIP = clone(r[0]); OVERRIDES = Array.isArray(r[1]) ? r[1] : (r[1].overrides || []); CONFS = (!Array.isArray(r[1]) && r[1].confirmations) || null; PLACES = r[2].places || {}; CITIES = r[2].cities || {};
       applyOverrides(); indexTrip(); buildNav(); bind(); render();
       $('#dietbtn').hidden = false; // only once a plan is loaded (app-shell mode starts without one)
       document.body.classList.add('has-plan');
