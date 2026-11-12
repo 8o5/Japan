@@ -800,3 +800,188 @@ html.ios body{font-family:var(--font)}
 #mesheet.is-wx .wx-d div span{display:inline}
 #mesheet.is-wx .wd-t{font-weight:600;font-variant-numeric:tabular-nums}
 #mesheet.is-wx .wd-p{color:var(--indigo);font-size:.882rem;font-weight:600}
+
+/* ===== Crew-fix pass (Nov 11 evening) ===== */
+/* planner action line + chips on Now / Next / Later */
+.nc-a{display:block;margin-top:6px;font-size:.912rem;line-height:1.38;font-weight:600;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nc-chip{margin:6px -6px 0;padding:0 2px}
+.nc-la{display:block;margin-top:2px;font-size:.824rem;font-weight:500;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nc-later li{display:block}
+.nc-later li .diet-chip{margin:-2px 0 8px}
+.nc-bags{display:flex;gap:10px;align-items:flex-start;margin:8px -6px 0;padding:11px 14px;border-radius:16px;background:var(--amber-bg);color:var(--ink);text-decoration:none;font-size:.912rem;line-height:1.38}
+.nc-bags b{font-weight:650}
+.nc-bi{flex:none;font-size:1.1rem;line-height:1.2}
+.nc-bk{display:block;margin-top:2px;color:var(--amber);font-weight:600}
+.nc-other{display:block;margin:8px 2px 0;padding:6px 0;font-size:.853rem;color:var(--ink-2);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nc-other .who{margin-right:2px}
+.nc-ot{color:var(--ink-3)}
+.nc-way{margin:14px 2px 0;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--card)}
+.nc-way ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:5px}
+.nc-way li{position:relative;padding-left:16px;font-size:.882rem;line-height:1.4;color:var(--ink)}
+.nc-way li::before{content:"";position:absolute;left:2px;top:.55em;width:6px;height:6px;border-radius:50%;background:var(--indigo)}
+.nc-off{margin:8px 0 0;font-size:.794rem;font-weight:600;color:var(--amber)}
+html.is-offline .nc-way{border-color:var(--amber);box-shadow:inset 3px 0 0 var(--amber)}
+.nc-net{flex:none;font-size:.735rem;font-weight:700;color:var(--ink-2);background:var(--canvas-2);padding:4px 9px;border-radius:999px;white-space:nowrap}
+.nc-top{flex-wrap:wrap}
+.btn-nav{min-width:0;max-width:100%}
+.btn-nav .bn-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.nc-act{flex-wrap:wrap}
+.nb-gt{max-width:9.5em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Elly diet chip: one line, tap for the full card */
+.diet-chip{display:flex;align-items:center;gap:6px;max-width:100%;min-height:36px;margin:10px 0 0;padding:0 12px;border:0;border-radius:999px;background:var(--alert-bg);color:var(--alert);font:inherit;font-size:.824rem;font-weight:650;cursor:pointer;text-align:left;position:relative}
+.diet-chip::after{content:"";position:absolute;inset:-4px 0}
+.dc-i{flex:none;font-size:.8rem}
+.dc-t{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* boarding lines + booking references on the day card */
+.s-board{margin:12px 0 0;padding:10px 12px;border-radius:12px;background:var(--indigo-wash)}
+.sb-k{display:block;font-size:.676rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo)}
+.s-board ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:4px}
+.s-board li{font-size:.882rem;line-height:1.4}
+.s-refs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+.ref{display:inline-flex;align-items:baseline;gap:4px;padding:4px 10px;border-radius:8px;background:var(--canvas-2);font-size:.794rem}
+.ref-k{color:var(--ink-3);font-weight:600}
+.ref-c{font-family:var(--mono);font-weight:700;color:var(--ink);user-select:all;-webkit-user-select:all;letter-spacing:.02em}
+.refs-box{margin-top:24px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:18px 20px}
+.refs-box h2{margin:0 0 6px;font-size:1.059rem;font-weight:700;letter-spacing:-.015em}
+.refs-i{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none;color:var(--ink)}
+.refs-i:first-of-type{border-top:0}
+.refs-n{flex:1 1 100%;font-weight:650}
+.refs-d{margin-left:8px;font-weight:500;font-size:.824rem;color:var(--ink-3)}
+/* split-day filter right under the title */
+.d-title + .party-f{margin:14px 0 2px}
+/* (a) content scrolling under the tab bar: denser glass so the big titles don't ghost through */
+@media (max-width:759px){
+  .tabbar{background:color-mix(in srgb,var(--canvas) 93%,transparent)}
+  .nextbar{background:color-mix(in srgb,var(--card) 94%,transparent)}
+}
+/* (b) offline on phones: no pill in the header (the title stays whole); a grey dot on the sun + a chip in the Now card */
+@media (max-width:759px){ .net{display:none!important} }
+html.is-offline .brand .sun{position:relative;filter:grayscale(.6)}
+html.is-offline .brand .sun::after{content:"";position:absolute;right:-3px;bottom:-3px;width:10px;height:10px;border-radius:50%;background:var(--ink-3);border:2px solid var(--canvas)}
+/* (c) day strip: soft fade at the edges instead of hard-cut tiles */
+.strip{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%)}
+.strip .s-c{max-width:66px}
+
+/* =====================================================================
+   Crew-fix pass (Nov 11 evening): planner lines on the card face, diet chips, boarding, refs, overview
+   ===================================================================== */
+/* Now / Next rows: the stop's own action line */
+.nc-a{display:block;margin-top:5px;font-size:.882rem;line-height:1.38;font-weight:600;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nc-next .nc-a{color:var(--ink)}
+.nc-chip{margin:6px -6px 0;padding:0 6px}
+/* Elly diet chip: one line, taps open the diet sheet */
+.diet-chip{display:flex;align-items:center;gap:6px;max-width:100%;min-height:32px;margin:8px 0 0;padding:4px 12px 4px 8px;border:0;border-radius:999px;background:var(--alert-bg);color:var(--alert);font-weight:600;font-size:.794rem;line-height:1.2;cursor:pointer;text-align:left;position:relative}
+.diet-chip::after{content:"";position:absolute;inset:-6px 0}
+.diet-chip .dc-t{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.diet-chip .dc-i{flex:none;font-size:.8rem}
+.nc-later .diet-chip{margin:0 0 8px}
+/* bags row */
+.nc-bags{display:flex;gap:10px;align-items:flex-start;margin:8px -6px 0;padding:11px 14px;border-radius:16px;background:var(--amber-bg);color:var(--ink);text-decoration:none;font-size:.882rem;line-height:1.38}
+.nc-bags b{display:block;font-weight:650;color:var(--ink)}
+.nc-bi{font-size:1.15rem;line-height:1.2}
+.nc-bk{display:block;margin-top:2px;color:var(--amber);font-weight:600}
+/* split day: the other lane, quiet */
+.nc-other{display:block;margin:8px 2px 0;font-size:.824rem;color:var(--ink-2);text-decoration:none;line-height:1.35}
+.nc-other .who{font-weight:700;margin-right:2px}
+.nc-ot{color:var(--ink-3)}
+.pf-top{margin:0 0 10px}
+.pf-top .party-f{margin:0;display:flex;width:100%}
+.pf-top .party-f button{flex:1;min-height:44px}
+@media (max-width:1179px){ .pf-hero-today{display:none!important} }
+.party-f{margin:14px 0 4px}
+.party-f button{min-height:44px}
+/* later list */
+.nc-la{display:block;font-size:.794rem;font-weight:500;color:var(--ink-2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nc-ln{display:block}
+.nc-more{display:inline-flex;align-items:center;min-height:36px;font-size:.824rem;font-weight:600;color:var(--accent);text-decoration:none;padding:2px 0}
+/* boarding / getting there next to Navigate (works with no signal) */
+.nc-way{margin:12px 2px 0;padding:10px 12px;border-radius:14px;background:var(--indigo-wash);color:var(--ink)}
+.nc-way .nc-k{color:var(--indigo)}
+.nc-way ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:4px}
+.nc-way li{position:relative;padding-left:14px;font-size:.853rem;line-height:1.4}
+.nc-way li::before{content:"";position:absolute;left:2px;top:.55em;width:6px;height:6px;border-radius:50%;background:var(--indigo);opacity:.7}
+.nc-off{margin:6px 0 0;font-size:.765rem;font-weight:700;color:var(--amber)}
+.nc-net{flex:none;font-size:.706rem;font-weight:700;color:var(--amber);background:var(--amber-bg);padding:3px 8px;border-radius:999px}
+.btn-nav .bn-t{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn-nav{max-width:100%;min-width:0}
+.nc-act{flex-wrap:wrap}
+.nc-act .btn-nav{flex:1 1 12em}
+/* stop cards: boarding + refs */
+.s-board{margin:12px 0 0;padding:10px 12px;border-radius:12px;background:var(--indigo-wash)}
+.sb-k{display:block;font-size:.676rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);margin-bottom:4px}
+.s-board ul{list-style:none;margin:0;padding:0;display:grid;gap:3px}
+.s-board li{font-size:.882rem;line-height:1.4}
+.s-refs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+.ref{display:inline-flex;align-items:baseline;gap:4px;padding:4px 10px;border-radius:9px;background:var(--canvas-2);font-size:.794rem}
+.ref-k{color:var(--ink-3);font-weight:600}
+.ref-c{font-family:var(--mono);font-weight:700;color:var(--ink);letter-spacing:.02em;user-select:all;-webkit-user-select:all}
+.refs-box{margin:24px 0 8px;padding:18px 20px;border-radius:var(--r-lg);background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
+.refs-box h2{margin:0 0 6px;font-size:1.059rem;letter-spacing:-.01em}
+.refs-i{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:10px 0;border-top:1px solid var(--line);color:inherit;text-decoration:none;min-height:44px}
+.refs-i:first-of-type{border-top:0}
+.refs-n{flex:1 1 100%;font-weight:650}
+.refs-d{display:block;font-size:.794rem;font-weight:500;color:var(--ink-3)}
+/* pre-trip: overview entry */
+.nc-trip,.row-link{display:flex;align-items:center;gap:10px;min-height:52px;margin:12px -6px 0;padding:8px 14px;border-radius:16px;background:var(--indigo-wash);color:var(--ink);text-decoration:none}
+.nc-trip b{display:block;font-size:.941rem}
+.nc-tsub{display:block;font-size:.824rem;color:var(--indigo);font-weight:600}
+.nc-trip>span:nth-child(2),.row-link{flex:1}
+.me-links{display:grid;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.row-link{margin:0;background:var(--canvas-2);font-weight:600;font-size:.941rem}
+.row-link .chev{margin-left:auto}
+/* overview */
+.ov-route ol{list-style:none;margin:18px 0 0;padding:0;display:grid;gap:10px;counter-reset:c}
+.ov-route li a{position:relative;display:grid;gap:2px;padding:14px 16px 14px 48px;border-radius:18px;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);color:var(--ink);text-decoration:none}
+.ov-route li a::before{counter-increment:c;content:counter(c);position:absolute;left:14px;top:15px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:.765rem;font-weight:700}
+.ov-route li+li a::after{content:"";position:absolute;left:25px;top:-11px;width:2px;height:10px;background:var(--line-2)}
+.ov-c{font-size:1.176rem;font-weight:700;letter-spacing:-.02em}
+.ov-dates{font-size:.853rem;font-weight:600;color:var(--accent)}
+.ov-h{font-size:.882rem;color:var(--ink-2)}
+.ov-box{margin-top:18px;padding:16px 18px;border-radius:var(--r-lg);background:var(--card);border:1px solid var(--line)}
+.ov-box p{margin:6px 0 0;font-size:.912rem;line-height:1.45}
+.ov-k{margin:0 0 4px;font-size:.706rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3)}
+.ov-moves,.ov-conf{list-style:none;margin:6px 0 0;padding:0;display:grid}
+.ov-moves a{display:flex;gap:12px;align-items:baseline;padding:10px 0;border-top:1px solid var(--line);color:var(--ink);text-decoration:none;min-height:44px}
+.ov-moves li:first-child a{border-top:0}
+.ov-md{flex:none;width:5.2em;font-size:.794rem;font-weight:700;color:var(--ink-3)}
+.ov-ms{display:block;font-size:.794rem;color:var(--ink-2)}
+.ov-conf li{padding:8px 0;border-top:1px solid var(--line);font-size:.882rem;line-height:1.4}
+.ov-conf li:first-child{border-top:0}
+.ov-legend{display:flex;flex-wrap:wrap;gap:6px}
+.ov-days{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.ov-days a{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:18px;background:var(--card);border:1px solid var(--line);color:var(--ink);text-decoration:none;min-height:64px}
+.ov-days li.is-today a{box-shadow:0 0 0 2px var(--accent)}
+.ov-dd{flex:none;width:3em;text-align:center;font-size:.706rem;font-weight:700;text-transform:uppercase;color:var(--ink-3);line-height:1.1}
+.ov-dd b{display:block;font-size:1.412rem;color:var(--ink);font-variant-numeric:tabular-nums}
+.ov-db{flex:1;min-width:0;display:grid;gap:3px}
+.ov-dt{font-weight:700;font-size:1rem;line-height:1.25;letter-spacing:-.01em}
+.ov-hl{font-size:.824rem;color:var(--ink-2);line-height:1.35}
+.ov-tags{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.735rem;font-weight:600;color:var(--ink-3)}
+.ov-tags .ok{color:var(--ok)}
+.ov-now{font-size:.647rem;font-weight:800;text-transform:uppercase;color:var(--on-accent);background:var(--accent);padding:2px 6px;border-radius:5px;vertical-align:2px}
+.ov-days .chev{flex:none}
+.ov-gl{margin-top:18px}
+.gl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0 0 6px;font-size:.912rem}
+.gl dt{font-weight:700}
+.gl dd{margin:0;color:var(--ink-2)}
+.ov-foot{margin:22px 2px 0;font-size:.882rem;color:var(--ink-3)}
+.ov-foot a{display:inline-block;padding:10px 4px;font-weight:600}
+/* 8a: bars are near-opaque so the big day title never ghosts through the tab bar / next bar */
+.tabbar,.nextbar{background:color-mix(in srgb,var(--canvas) 94%,transparent)}
+@supports not (background:color-mix(in srgb,red 50%,blue)){ .tabbar,.nextbar{background:var(--canvas)} }
+/* 8b: phones show offline as a grey dot on the sun + a chip in the Now card (block above) */
+/* 8c: day strip fades at its edges instead of cutting tiles mid-word */
+.strip{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);scroll-padding-inline:24px}
+.strip .s-c{max-width:none}
+/* HIG: Reduce Transparency / Increase Contrast */
+@media (prefers-reduced-transparency:reduce){ .top,.tabbar,.nextbar{background:var(--canvas);-webkit-backdrop-filter:none;backdrop-filter:none} }
+@media (prefers-contrast:more){ :root{--ink-2:#4A4038;--ink-3:#4F463D;--line:rgba(60,40,20,.28)} :root[data-theme="dark"]{--ink-2:#E2D6C9;--ink-3:#CFC2B4;--line:rgba(255,235,210,.3)} }
+@media (prefers-contrast:more) and (prefers-color-scheme:dark){ :root:not([data-theme="light"]){--ink-2:#E2D6C9;--ink-3:#CFC2B4;--line:rgba(255,235,210,.3)} }
+.nc-row .nc-a{grid-column:1 / -1}
+.tabbar{background:var(--canvas);-webkit-backdrop-filter:none;backdrop-filter:none}
+.nextbar{background:var(--card)}
+.nc-act .btn-nav{flex:1 1 100%}
+.nc-act .btn-ic{flex:0 0 auto;min-height:44px;font-size:.882rem}
+@media (min-width:760px){ .nc-act .btn-nav{flex:1 1 auto} }
+.top{background:color-mix(in srgb,var(--canvas) 92%,transparent)}
+.diet-chip{min-height:44px}

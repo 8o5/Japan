@@ -3,7 +3,7 @@
   'use strict';
   var CFG = window.APP_CONFIG || {};
   var TRIP = null, PLACES = {}, CITIES = {}, OVERRIDES = [];
-  var DAYS = [], STOPS = {}; // STOPS[day] = [{uid, stop, t(ms|null)}]
+  var DAYS = [], STOPS = {}, FLAT = {}; // STOPS[day] = [{uid, stop, t(ms|null)}]; FLAT[day] = stops + routes in planner order
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   var LS = {
@@ -155,19 +155,20 @@
   function indexTrip() {
     DAYS = TRIP.days.map(function (d) { return d.day; });
     TRIP.days.forEach(function (d) {
-      var list = [], n = 0;
+      var list = [], n = 0, flat = [];
       function rec(items, party, ob) {
         items.forEach(function (it) {
           if (it.kind === 'party') return rec(it.items, it.party, ob);
           if (it.kind !== 'stop' && it.kind !== 'route') return;
-          it._uid = 's' + d.day + '-' + (n++);
+          it._uid = 's' + d.day + '-' + (n++); flat.push(it);
+          if (!it._day) Object.defineProperty(it, '_day', { value: d.day, enumerable: false, writable: true });
           if (it.kind !== 'stop') return;
           var mins = parseClock(it.time);
           list.push({ uid: it._uid, stop: it, party: party || '', ob: !!ob, day: d.day, t: (mins == null || it.optional || it.moved || ob) ? null : jstAt(d.day, mins) });
         });
       }
       d.blocks.forEach(function (b) { rec(b.items, '', b.optional); });
-      STOPS[d.day] = list;
+      STOPS[d.day] = list; FLAT[d.day] = flat;
     });
   }
   function dayObj(n) { return TRIP.days.filter(function (d) { return d.day === n; })[0]; }
@@ -191,7 +192,7 @@
     if (cur && t - cur.t > 3 * 3600e3) cur = null;
     var ord = mine(td), from = last ? ord.indexOf(last) + 1 : 0, to = next && nextDay === td ? ord.indexOf(next) : ord.length;
     var hr = jst(t).h + jst(t).mi / 60;
-    var later = hr >= 22 ? [] : ord.slice(from, to < 0 ? ord.length : to).filter(function (s) { return s.t == null && !s.stop.optional && !s.stop.moved && !s.ob && !softOver(s.stop.time, hr); }).slice(0, 3);
+    var later = hr >= 22 ? [] : ord.slice(from, to < 0 ? ord.length : to).filter(function (s) { return s.t == null && !s.stop.optional && !s.stop.moved && !s.ob && !softOver(s.stop.time, hr) && !isBag(s.stop); }).slice(0, 8);
     return { phase: 'trip', t: t, day: td, cur: cur, next: next, nextDay: nextDay, later: later,
       flying: td === DAYS[0] && !last, home: !next && td === DAYS[DAYS.length - 1] ? end : null };
   }
@@ -202,7 +203,8 @@
      On split days (Jan 12) Now/Next only shows this person's stops plus shared ones; an unlinked
      device follows the Nic / Elly filter on that day instead. */
   function whoAmI() { var w = null; try { w = (localStorage.getItem('jp27.who') || '').replace(/"/g, ''); } catch (e) {} return w === 'nic' || w === 'elly' ? w : null; } // raw string, written by backend.js
-  function partyMe() { var w = whoAmI(); if (w) return w; var p = LS.get('party', 'all'); return p === 'nic' || p === 'elly' ? p : null; }
+  function partyPick() { return LS.get('party', null) || whoAmI() || 'all'; } // a phone linked as Elly opens in her lane
+  function partyMe() { var p = partyPick(); return p === 'nic' || p === 'elly' ? p : null; }
   function mine(day) { var w = partyMe(); return (STOPS[day] || []).filter(function (s) { return !w || !s.party || s.party === w; }); }
   function timed(day) { return mine(day).filter(function (s) { return s.t != null; }).sort(function (a, b) { return a.t - b.t; }); }
 
@@ -239,12 +241,15 @@
     var dest = placeOf(st.next.stop); if (!dest) return null;
     var origin = null, from = '';
     if (GEO && now() - GEO.at < 15 * 60e3 && km(GEO, dest) < 150) { origin = GEO; from = 'your location'; }
-    else if (st.cur && placeOf(st.cur.stop)) { origin = placeOf(st.cur.stop); from = st.cur.stop.name; }
+    else if (st.cur && placeOf(st.cur.stop) && !TRAIN_RX.test(st.cur.stop.typeLabel || '')) { origin = placeOf(st.cur.stop); from = st.cur.stop.name; }
     if (!origin) return null;
     var L = CFG.leaveBy, d = km(origin, dest);
+    if (d < 0.05) return null; // same place (e.g. head spa at the same salon) — nothing to leave for
     var walk = d < L.walkMaxKm, est = Math.ceil(walk ? d / L.walkKmh * 60 : d / L.transitKmh * 60 + L.transitBufferMin);
     var left = (st.next.t - now()) / 60000;
+    if (est > 120) return null;
     var leaveAt = st.next.t - (est + L.extraBufferMin) * 60000;
+    if (now() < leaveAt - 60 * 60000) return null; // shown from 60 min before leave-by
     return { km: d, est: est, walk: walk, from: from, go: left < est + L.extraBufferMin && left > -5, soon: leaveAt - now() < 30 * 60000, leaveAt: leaveAt };
   }
   function askLocation(btn) {
@@ -343,32 +348,157 @@
       list.map(dlItemHTML).join('') + '</ul><div class="w-act"><a class="btn" href="#bookings">All bookings</a></div><p class="fine">Times as written in the planner (Pacific unless marked JST).</p></section>';
   }
 
+  /* ---------------- planner text on the card face (verbatim clauses, never reworded) ---------------- */
+  var _tx = document.createElement('div');
+  function plain(h) { _tx.innerHTML = String(h || '').replace(/<br\s*\/?>|<\/(p|div|li)>/gi, ' · '); return (_tx.textContent || '').replace(/\s+/g, ' ').replace(/^( · )+|( · )+$/g, '').replace(/( · ){2,}/g, ' · ').trim(); }
+  /* sentences → clauses split on " · ", "; ", " — " and ", and " (the planner's own separators) */
+  function clauses(text) {
+    var out = [];
+    String(text || '').replace(/([.!?])\s+(?=[A-Z(])/g, '$1\u0001').split('\u0001').forEach(function (sen) {
+      sen.split(/ · |; | — |, and /).forEach(function (c) { c = c.trim(); if (c) out.push(c); });
+    });
+    return out;
+  }
+  function detailText(stop, keys) {
+    return (stop.details || []).filter(function (r) { return !keys || keys.test(r.key || ''); }).map(function (r) { return plain(r.html); }).join(' ');
+  }
+  function overlaps(a, b) { // does clause a repeat 4+ consecutive words of b?
+    var w = a.toLowerCase().replace(/[^\w\s’']/g, '').split(/\s+/), B = ' ' + b.toLowerCase().replace(/[^\w\s’']/g, '') + ' ';
+    for (var i = 0; i + 3 < w.length; i++) if (B.indexOf(' ' + w.slice(i, i + 4).join(' ') + ' ') >= 0) return true;
+    return false;
+  }
+  /* The day's bag move ("Luggage" / "Hotel move" stop): its action + the one clause with the hand-over / collect timing. */
+  var BAG_RX = /\bbefore\b|\bcollect\b|hand-over|\bby \d/i;
+  function isBag(stop) { return /^luggage$/i.test(stop.name || '') || /hotel move/i.test(stop.typeLabel || ''); }
+  function bagInfo(day) {
+    var b = mine(day).filter(function (s) { return isBag(s.stop); })[0];
+    if (!b) return null;
+    var act = b.stop.action || '', key = clauses(detailText(b.stop, /about|notes/i)).filter(function (c) { return BAG_RX.test(c) && !overlaps(c, act); })[0] || '';
+    return { s: b, action: act, key: key };
+  }
+  /* Train / bus stops: boarding platform, line, gates and exits, from the day's start note, the route next to it and its details. */
+  var TRAIN_RX = /train|express|shinkansen|romancecar|\bbus\b/i, BOARD_RX = /platform|\bexit\b|\bgates?\b|concourse|through-service|\bline\b|change at|transfer/i;
+  function transitLines(s) {
+    var stop = s.stop || s; if (!TRAIN_RX.test(stop.typeLabel || '')) return [];
+    var day = s.day || null, out = [], seen = [];
+    function add(c) { c = c.trim(); if (!c || out.length >= 3) return; if (seen.some(function (x) { return x === c || overlaps(c, x); })) return; seen.push(c); out.push(c); }
+    var d = day && dayObj(day);
+    if (d) (d.start2 || []).forEach(function (h) { clauses(plain(h)).forEach(function (c) { if (BOARD_RX.test(c)) add(c); }); });
+    var flat = day ? FLAT[day] || [] : [], i = flat.indexOf(stop), r = flat[i - 1] && flat[i - 1].kind === 'route' ? flat[i - 1] : (flat[i + 1] && flat[i + 1].kind === 'route' && /through-service|same train/i.test(plain((flat[i + 1].legs || [])[0] && flat[i + 1].legs[0].html)) ? flat[i + 1] : null);
+    if (r) (r.legs || []).forEach(function (l) {
+      var parts = splitDots(l.html).map(plain);
+      if (parts[0]) add(parts[0]);
+      parts.slice(1).forEach(function (c) { if (BOARD_RX.test(c)) add(c); });
+      (l.rail || []).forEach(function (x) { add(x.line + ': ' + x.stations.map(function (z) { return (z.code && /\d/.test(z.code) ? z.code + ' ' : '') + z.name; }).join(' → ')); });
+    });
+    clauses(detailText(stop, /about|notes|why|getting/i)).forEach(function (c) { if (BOARD_RX.test(c)) add(c); });
+    return out;
+  }
+  /* How to get to a stop without Maps (offline): planner "Getting there", else the transit lines. */
+  function wayLines(s) {
+    var stop = s.stop || s;
+    if (stop.getThere) return [plain(stop.getThere.html)];
+    return transitLines(s);
+  }
+  /* Elly's diet on food stops: the stop's own diet line, else the app's standing summary of the diet card. */
+  var DIET_GENERIC = 'Elly: allergic to garlic and onion · avoids tomato · cooked salmon is the only fish · no matcha, no alcohol'; // app summary of the diet card (generated — flagged for Nic)
+  var FOOD_RX = /restaurant|ramen|noodle|tsukemen|katsudon|yakitori|skewer|taco|steak|wagyu|food|dinner|lunch|breakfast|kaiseki|okonomiyaki|pancake|café|cafe|bakery|crêpe|ekiben|konbini|counter|izakaya|sushi|tonkatsu/i;
+  function isFood(stop) {
+    if ((stop.flags || []).some(function (f) { return f.kind === 'diet'; })) return true;
+    if (/coffee|tea shop|bean/i.test(stop.typeLabel || '') && !/café|cafe/i.test(stop.typeLabel || '')) return false;
+    return FOOD_RX.test([stop.typeLabel, stop.action, stop.time].join(' ')) && !/shopping|store|mall floors/i.test(stop.typeLabel || '') || /restaurant floors|food hall/i.test(stop.typeLabel || '');
+  }
+  function dietText(stop) {
+    var f = (stop.flags || []).filter(function (x) { return x.kind === 'diet'; })[0];
+    return f ? plain(f.html) : DIET_GENERIC;
+  }
+  function dietChip(stop, force) {
+    if (!isFood(stop)) return '';
+    var own = (stop.flags || []).some(function (x) { return x.kind === 'diet'; });
+    if (own && !force) return ''; // the stop's own diet line is already on the card face
+    return '<button type="button" class="diet-chip" data-act="diet" aria-label="Elly’s diet: ' + esc(dietText(stop)) + '. Open the diet card"><span class="dc-i" aria-hidden="true">⚠️</span><span class="dc-t">' + esc(dietText(stop)) + '</span></button>';
+  }
+  /* Booking references the planner already holds (teamLab, Daruma …) — shown on the card face and in Bookings. */
+  var REF_RX = /\b(Reference|Viator ref|Viator|itinerary|Confirmation(?: no\.?| number)?|Booking (?:no\.?|number|ID))\s+([A-Z0-9][A-Z0-9-]{5,}\d[A-Z0-9-]*)/g;
+  function refsOf(stop) {
+    var txt = [plain((stop.flags || []).map(function (f) { return f.html; }).join(' · ')), detailText(stop)].join(' · '), out = [], codes = {}, m;
+    REF_RX.lastIndex = 0;
+    while ((m = REF_RX.exec(txt))) { if (!codes[m[2]]) { codes[m[2]] = 1; out.push({ label: m[1], code: m[2], text: m[0] }); } }
+    return out;
+  }
+  function allRefs() {
+    var out = [];
+    DAYS.forEach(function (n) { (STOPS[n] || []).forEach(function (s) { var r = refsOf(s.stop); if (r.length) out.push({ s: s, day: n, refs: r }); }); });
+    return out;
+  }
+
   /* ---------------- Now / Next card ---------------- */
   function dlItemHTML(x) {
     return '<li class="' + (x.b.urgent || x.open ? 'urgent' : '') + '"><span class="dl-w">' + ic('⏰') + (x.open ? '<b class="dl-open">' + (/open/i.test(x.b.when || '') ? 'Open now' : 'Due now') + '</b> · ' : '') + esc(x.b.when) + '</span><span class="dl-t">' + esc(x.b.what) + '</span></li>';
   }
   function clockHead(st, label) {
     return '<div class="nc-top"><p class="nc-clock"><span class="live" aria-hidden="true"></span>' + esc(label || fmtJST(st.t)) +
-      '<span class="nc-tz">' + esc(fmtDayJST(st.t)) + ' · Japan</span></p><div class="wx-inline"></div></div>';
+      '<span class="nc-tz">' + esc(fmtDayJST(st.t)) + ' · Japan</span></p>' + (navigator.onLine ? '' : '<span class="nc-net">Offline · saved plan</span>') + '<div class="wx-inline"></div></div>';
   }
-  function partyTag(s) { return s.party && !whoAmI() && LS.get('party', 'all') === 'all' ? '<span class="who w-' + esc(s.party) + '">' + (s.party === 'nic' ? 'Nic' : 'Elly') + '</span> ' : ''; }
+  function partyTag(s) { return s.party && !partyMe() ? '<span class="who w-' + esc(s.party) + '">' + (s.party === 'nic' ? 'Nic' : 'Elly') + '</span> ' : ''; }
   function ncRow(kind, s, day, st) {
     var other = day !== st.day, when = other ? dayWord(s.t) : '';
     var badge = kind === 'Next' ? (other ? '<span class="nc-badge nc-badge-q">' + esc(when) + '</span>' : '<span class="nc-badge">' + esc(until(s.t)) + '</span>') : '';
     return '<a class="nc-row nc-' + kind.toLowerCase() + '" href="#d' + day + '" data-jump="' + s.uid + '">' +
       '<span class="nc-k">' + kind + '</span>' + badge +
       '<span class="nc-n">' + partyTag(s) + esc(s.stop.name) + '</span>' +
-      '<span class="nc-m">' + esc(s.stop.time) + (s.stop.typeLabel ? ' · ' + esc(s.stop.typeLabel) : '') + '</span></a>';
+      '<span class="nc-m">' + esc(s.stop.time) + (s.stop.typeLabel ? ' · ' + esc(s.stop.typeLabel) : '') + '</span>' +
+      (s.stop.action ? '<span class="nc-a">' + esc(s.stop.action) + '</span>' : '') + '</a>' + (isFood(s.stop) ? '<div class="nc-chip">' + dietChip(s.stop, true) + '</div>' : '');
   }
   function laterHTML(st) {
+    var bi = st.phase === 'trip' ? bagInfo(st.day) : null;
+    if (bi && st.later) st = Object.assign({}, st, { later: st.later.filter(function (x) { return x.uid !== bi.s.uid; }) });
     if (!st.later || !st.later.length) return '';
-    var head = st.next && st.nextDay === st.day ? 'Before that' : 'Later today';
-    return '<div class="nc-later"><p class="nc-k">' + head + '</p><ul>' + st.later.map(function (s) {
-      return '<li><a href="#d' + st.day + '" data-jump="' + s.uid + '"><span class="nc-lt">' + esc(s.stop.time) + '</span><span class="nc-ln">' + partyTag(s) + esc(s.stop.name) + '</span></a></li>'; }).join('') + '</ul></div>';
+    var head = st.next && st.nextDay === st.day ? 'Before that' : 'Later today', more = st.later.length - 2;
+    return '<div class="nc-later"><p class="nc-k">' + head + '</p><ul>' + st.later.slice(0, 2).map(function (s) {
+      return '<li><a href="#d' + st.day + '" data-jump="' + s.uid + '"><span class="nc-lt">' + esc(s.stop.time) + '</span><span class="nc-ln">' + partyTag(s) + esc(s.stop.name) +
+        (s.stop.action ? '<span class="nc-la">' + esc(s.stop.action) + '</span>' : '') + '</span></a>' + (isFood(s.stop) ? dietChip(s.stop, true) : '') + '</li>'; }).join('') + '</ul>' +
+      (more > 0 ? '<a class="nc-more" href="#d' + st.day + '" data-jump="' + st.later[2].uid + '">+' + more + ' more today</a>' : '') + '</div>';
+  }
+  function shortName(n) { return String(n || '').split(' · ')[0].trim(); }
+  /* where Navigate actually goes: for "A → B" trains that is the boarding station A */
+  function navName(stop) { var n = shortName(stop.name); return TRAIN_RX.test(stop.typeLabel || '') && /→/.test(n) ? n.split('→')[0].trim() : n; }
+  function navPick(st) {
+    if (st.phase !== 'trip' || st.flying) return null;
+    if (st.next && st.nextDay === st.day && navTarget(st.next.stop)) return { s: st.next, k: 'Next · ' + until(st.next.t) };
+    var up = st.next && st.nextDay === st.day ? timed(st.day).filter(function (x) { return x.t > st.next.t && navTarget(x.stop); })[0] : null;
+    if (up) return { s: up, k: 'Then · ' + until(up.t) };
+    if (st.cur && navTarget(st.cur.stop)) return { s: st.cur, k: 'Now' };
+    var l = (st.later || []).filter(function (x) { return navTarget(x.stop); })[0];
+    return l ? { s: l, k: 'Later today' } : null;
   }
   function navBtn(stop, cls) {
     var t = stop && navTarget(stop); if (!t) return '';
-    return '<a class="btn ' + (cls || 'btn-p') + ' btn-nav" href="' + esc(dirURL(t)) + '" target="_blank" rel="noopener" aria-label="Navigate to ' + esc(stop.name) + '">' + svgI('nav') + 'Navigate</a>';
+    return '<a class="btn ' + (cls || 'btn-p') + ' btn-nav" href="' + esc(dirURL(t)) + '" target="_blank" rel="noopener" aria-label="Navigate to ' + esc(navName(stop)) + '">' + svgI('nav') + '<span class="bn-t">Navigate to ' + esc(navName(stop)) + '</span></a>';
+  }
+  /* Planner directions next to Navigate — readable with no signal (Maps can't route offline). */
+  function wayHTML(s) {
+    var w = wayLines(s); if (!w.length) return '';
+    return '<div class="nc-way"><p class="nc-k">' + (TRAIN_RX.test(s.stop.typeLabel || '') ? 'Boarding' : 'Getting there') + ' · ' + esc(shortName(s.stop.name)) + '</p><ul>' +
+      w.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' + (navigator.onLine ? '' : '<p class="nc-off">Offline — Maps can’t plan a route; use these.</p>') + '</div>';
+  }
+  function bagHTML(st) {
+    var b = bagInfo(st.day); if (!b) return '';
+    if (b.s.t != null && now() - b.s.t > 3 * 3600e3) return '';
+    if (st.cur && /\bbags?\b|luggage/i.test(st.cur.stop.action || '')) return ''; // the Now stop already says it
+    if ((st.cur && st.cur.uid === b.s.uid) || (st.next && st.next.uid === b.s.uid)) return '';
+    return '<a class="nc-bags" href="#d' + st.day + '" data-jump="' + b.s.uid + '"><span class="nc-bi" aria-hidden="true">🧳</span><span><b>' + esc(b.action) + '</b>' + (b.key ? '<span class="nc-bk">' + esc(b.key) + '</span>' : '') + '</span></a>';
+  }
+  /* Split day: in one person's lane, the other's current/next solo stop as a quiet line. */
+  function otherLaneHTML(st) {
+    var me = partyMe(); if (!me) return '';
+    var other = me === 'nic' ? 'elly' : 'nic', theirs = (STOPS[st.day] || []).filter(function (x) { return x.party === other; });
+    if (!theirs.length) return '';
+    var timedT = theirs.filter(function (x) { return x.t != null; }).sort(function (a, b) { return a.t - b.t; }), cur = null, nx = null;
+    timedT.forEach(function (x) { if (x.t <= st.t) cur = x; else if (!nx) nx = x; });
+    if (cur && st.t - cur.t > 3 * 3600e3) cur = null;
+    var x = cur || nx || theirs[0], nm = other === 'nic' ? 'Nic' : 'Elly';
+    return '<a class="nc-other" href="#d' + st.day + '" data-jump="' + x.uid + '"><span class="who w-' + other + '">' + nm + '</span> ' + (cur ? 'now' : 'next') + ' · ' + esc(x.stop.name) + ' <span class="nc-ot">' + esc(x.stop.time) + '</span></a>';
   }
   function nowHTML() {
     var st = state(), h = '';
@@ -378,16 +508,18 @@
         '<p class="now-big">' + esc(until(dep).replace(/^in /, '')) + '</p>' +
         '<p class="now-sub">to ' + esc(CFG.departure.label) + ' · ' + esc(CFG.departure.when) + '</p>' +
         '<a class="nc-row nc-then" href="#d' + DAYS[0] + '"><span class="nc-k">Then · ' + esc(d0.eyebrow.split(' · ')[0]) + '</span><span class="nc-n">' + esc(d0.title) + '</span></a>';
+      h += '<a class="nc-trip" href="#trip">' + ic('🗺️') + '<span><b>The trip at a glance</b><span class="nc-tsub">' + esc(TRIP.nav.map(function (g) { return g.city.split(' · ')[0]; }).filter(function (c, i, a) { return a.indexOf(c) === i || i === a.length - 1; }).join(' → ')) + '</span></span><span class="chev" aria-hidden="true">›</span></a>';
       var dl = upcomingDeadlines(3);
       if (dl.length) h += '<div class="now-dl"><p class="nc-k">Next booking windows</p><ul class="dl-list">' + dl.map(dlItemHTML).join('') + '</ul></div>';
       h += liveNudge();
     } else if (st.phase === 'post') {
       h += '<div class="nc-top"><p class="nc-clock">Trip complete</p></div><p class="now-big">おかえり</p><p class="now-sub">Japan 9–21 Jan 2027 is done. Everything stays here to look back on.</p>';
     } else {
-      var lb = leaveBy(st), tgt = st.next ? st.next.stop : null;
+      var lb = leaveBy(st), pick = navPick(st), tgt = pick ? pick.s.stop : null;
       h += clockHead(st);
       if (st.flying) h += '<div class="nc-row nc-now"><span class="nc-k">Now</span><span class="nc-n">' + ic('✈️') + 'In the air</span><span class="nc-m">' + esc(CFG.departure.label) + '</span></div>';
       if (st.cur) h += ncRow('Now', st.cur, st.day, st);
+      h += bagHTML(st) + otherLaneHTML(st);
       var tomorrow = st.next && st.nextDay !== st.day;
       if (tomorrow) h += laterHTML(st);
       if (st.next) h += ncRow('Next', st.next, st.nextDay, st);
@@ -404,8 +536,11 @@
       }
       if (!tomorrow) h += laterHTML(st);
       if (st.next && st.nextDay === st.day && st.next.t - now() <= LS.get('leadMin', CFG.notifyLeadMin || 30) * 60000 && st.next.t > now()) notify('nx-' + st.next.uid, 'Next: ' + st.next.stop.name, st.next.stop.time + ' · ' + until(st.next.t));
-      var showGeo = lb || (st.next && st.nextDay === st.day && placeOf(st.next.stop) && st.next.t - now() < 4 * 3600e3);
+      // "My location" follows the leave-by window: shown while leave-by shows, or (no known origin yet) once the next stop
+      // is within 90 min — the 60-min window plus a conservative trip.
+      var showGeo = lb || (st.next && st.nextDay === st.day && placeOf(st.next.stop) && st.next.t - now() <= 90 * 60000);
       var acts = (st.flying ? '' : navBtn(tgt)) + (showGeo ? '<button class="btn btn-ic" data-act="geo" aria-label="' + (GEO_DENIED() ? 'Location is off — try again' : 'Use my location for the leave-by time') + '">' + svgI('loc') + '<span>' + (GEO_DENIED() ? 'Location off' : GEO && now() - GEO.at < 15 * 60e3 ? 'Update' : 'My location') + '</span></button>' : '');
+      if (pick) h += wayHTML(pick.s);
       if (acts) h += '<div class="w-act nc-act">' + acts + '</div>';
       if (GEO_DENIED() && showGeo) h += '<p class="fine warn">Location is off, so leave-by uses the current stop. Turn on: Settings → Privacy &amp; Security → Location Services → Safari Websites → While Using.</p>';
       h += liveNudge();
@@ -450,10 +585,11 @@
     var html = nowHTML(), st = state();
     $('#now-d').innerHTML = html;
     // Phone: on a day other than today, a one-line "back to today" pill so the day itself comes first.
-    $('#now-m').innerHTML = (ROUTE.view !== 'day') ? '' : (st.phase === 'trip' && ROUTE.day !== st.day) ? compactNowHTML(st) : html;
+    var pfTop = st.phase === 'trip' && ROUTE.view === 'day' && ROUTE.day === st.day ? partyFilterHTML(dayObj(st.day)) : '';
+    $('#now-m').innerHTML = (ROUTE.view !== 'day') ? '' : (st.phase === 'trip' && ROUTE.day !== st.day) ? compactNowHTML(st) : (pfTop ? '<div class="pf-top">' + pfTop + '</div>' : '') + html;
     $('#dl-d').innerHTML = st.phase === 'pre' ? deadlinesHTML(6) : (st.phase === 'trip' ? deadlinesHTML(3, 'Still to do') : '');
     var ld = $('#live-d'); if (ld) ld.innerHTML = '<section class="w" aria-label="Together and alerts"><h2 class="w-h">You &amp; alerts</h2>' + liveSlot() + '</section>';
-    var mb = $('#me-b'); if (mb && $('#mesheet').open) mb.innerHTML = liveSlot();
+    var mb = $('#me-b'); if (mb && $('#mesheet').open && SHEET.open === 'me') mb.innerHTML = liveSlot() + meLinks();
     renderWeather();
     highlightNow();
     nextBar(st);
@@ -472,12 +608,12 @@
   function nextBar(st) {
     var bar = $('#nextbar'); if (!bar) return;
     st = st || state();
-    var ok = st.phase === 'trip' && st.next && st.nextDay === st.day && ROUTE.view === 'day' && ROUTE.day === st.day;
-    document.body.classList.toggle('has-next', !!ok);
-    if (!ok) { bar.innerHTML = ''; bar.classList.remove('show'); return; }
-    var t = navTarget(st.next.stop);
-    bar.innerHTML = '<a class="nb-i" href="#d' + st.day + '" data-jump="' + st.next.uid + '"><span class="nb-k">Next · ' + esc(until(st.next.t)) + '</span><span class="nb-n">' + esc(st.next.stop.name) + '</span></a>' +
-      (t ? '<a class="nb-go" href="' + esc(dirURL(t)) + '" target="_blank" rel="noopener" aria-label="Navigate to ' + esc(st.next.stop.name) + '">' + svgI('nav') + 'Go</a>' : '');
+    var pick = st.phase === 'trip' && ROUTE.view === 'day' && ROUTE.day === st.day ? navPick(st) : null;
+    document.body.classList.toggle('has-next', !!pick);
+    if (!pick) { bar.innerHTML = ''; bar.classList.remove('show'); return; }
+    var t = navTarget(pick.s.stop), nm = navName(pick.s.stop);
+    bar.innerHTML = '<a class="nb-i" href="#d' + st.day + '" data-jump="' + pick.s.uid + '"><span class="nb-k">' + esc(pick.k) + ' · Navigate to</span><span class="nb-n">' + esc(nm) + '</span></a>' +
+      '<a class="nb-go" href="' + esc(dirURL(t)) + '" target="_blank" rel="noopener" aria-label="Navigate to ' + esc(nm) + '">' + svgI('nav') + '<span class="nb-gt">Go</span></a>';
     nextBarVis();
   }
   function nextBarVis() {
@@ -526,6 +662,11 @@
     if (s.action) h += '<p class="s-act">' + esc(s.action) + '</p>';
     if (s.flags && s.flags.length) h += '<div class="fls">' + flagsHTML(s.flags) + '</div>';
     if (s.getThere) h += '<p class="s-get">' + ic('📍') + '<b>' + esc(s.getThere.label) + '</b> ' + s.getThere.html + '</p>';
+    var board = s._day ? transitLines({ stop: s, day: s._day }).filter(function (c) { return !(dayObj(s._day).start2 || []).some(function (h) { return plain(h).indexOf(c) >= 0; }) && !routeHas(s, c); }) : [];
+    if (board.length) h += '<div class="s-board"><span class="sb-k">' + ic('🚉') + 'Boarding</span><ul>' + board.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ul></div>';
+    var refs = refsOf(s).filter(function (r) { return (s.flags || []).map(function (f) { return plain(f.html); }).join(' ').indexOf(r.code) < 0; });
+    if (refs.length) h += '<p class="s-refs">' + refs.map(function (r) { return '<span class="ref"><span class="ref-k">' + esc(r.label) + '</span> <span class="ref-c">' + esc(r.code) + '</span></span>'; }).join('') + '</p>';
+    h += dietChip(s);
     if (s.meta && s.meta.length) h += '<p class="s-meta">' + s.meta.map(function (m) {
       return '<span' + (m.who ? ' class="who w-' + esc(m.who) + '"' : '') + '>' + (/^Open\b|^Always open/.test(m.text) ? ic('🕘') : '') + esc(m.text) + '</span>'; }).join('') + '</p>';
     var nav = navHTML(s);
@@ -535,6 +676,10 @@
       return '<a class="lk' + (l.primary ? ' lk-t' : '') + '" href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>'; }).join('') + '</div>';
     if (s.details && s.details.length) h += '<details class="more"><summary>Details</summary><div class="more-b">' + rowsHTML(s.details) + '</div></details>';
     return h + '</article>';
+  }
+  function routeHas(stop, c) { // already printed by the route card right before this stop
+    var flat = FLAT[stop._day] || [], i = flat.indexOf(stop), r = flat[i - 1];
+    return !!(r && r.kind === 'route' && (r.legs || []).some(function (l) { return plain(l.html).indexOf(c) >= 0; }));
   }
   function railHTML(r) {
     return '<div class="rail-d">' + r.map(function (l, i) {
@@ -574,7 +719,9 @@
   }
   function dayHTML(d) {
     var i = DAYS.indexOf(d.day), prev = DAYS[i - 1], next = DAYS[i + 1];
-    var h = '<header class="d-hero"><p class="d-eyebrow">' + esc(d.eyebrow) + '</p><h1 class="d-title">' + esc(d.title) + '</h1>' +
+    var pf = partyFilterHTML(d), stT = state();
+    if (pf && stT.phase === 'trip' && stT.day === d.day) pf = pf.replace('class="party-f"', 'class="party-f pf-hero-today"');
+    var h = '<header class="d-hero"><p class="d-eyebrow">' + esc(d.eyebrow) + '</p><h1 class="d-title">' + esc(d.title) + '</h1>' + pf +
       '<p class="d-start"><span class="k">' + esc(d.start.label) + '</span>' + d.start.html + ' <span class="tz">' + esc(d.start.tz) + '</span></p>' +
       d.start2.map(function (s) { return '<p class="d-start2">' + s + '</p>'; }).join('');
     if (d.glance) {
@@ -587,11 +734,6 @@
         chips.push('<li>' + (e ? ic(e) : '') + g + '</li>');
       });
       h += '<ul class="glance" aria-label="At a glance">' + chips.join('') + '</ul>' + longs.map(function (g) { return '<p class="glance-n">' + g + '</p>'; }).join('');
-    }
-    if (d.partyFilter && d.partyFilter.length) {
-      var cur = LS.get('party', 'all');
-      h += '<div class="party-f" role="group" aria-label="Show">' + d.partyFilter.map(function (b) {
-        return '<button type="button" data-show="' + esc(b.show) + '" aria-pressed="' + (cur === b.show) + '">' + esc(b.label) + '</button>'; }).join('') + '</div>';
     }
     h += '</header>';
     if (d.first) h += '<section class="first rv"><h2>' + esc(d.first.heading) + '</h2><ul>' + d.first.items.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>' +
@@ -610,15 +752,93 @@
       (next ? '<a href="#d' + next + '" class="nx"><span>Next ›</span>' + esc(dayObj(next).eyebrow.split(' · ')[0]) + '</a>' : '<span></span>') + '</nav>';
     return h;
   }
+  function partyFilterHTML(d) {
+    if (!d || !d.partyFilter || !d.partyFilter.length) return '';
+    var curP = partyPick();
+    return '<div class="party-f" role="group" aria-label="Show whose plan">' + d.partyFilter.map(function (b) {
+      return '<button type="button" data-show="' + esc(b.show) + '" aria-pressed="' + (curP === b.show) + '">' + esc(b.label) + '</button>'; }).join('') + '</div>';
+  }
   function applyParty() {
-    var cur = LS.get('party', 'all');
+    var cur = partyPick();
     $$('.party[data-party]').forEach(function (p) { p.hidden = !(cur === 'all' || p.getAttribute('data-party') === cur); });
     $$('.party-f button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-show') === cur)); });
+  }
+
+  /* ---------------- the trip at a glance (#trip) ----------------
+     Everything here is planner text (day titles, hotels from the day headers, the confirmed facts, stop names and their
+     type labels) except the few app labels marked GEN, which Nic should review (see CLAUDE-REPORT). */
+  function confirmedFacts() {
+    var bk = TRIP.panels.filter(function (p) { return p.id === 'bookings'; })[0], c = bk && bk.parts.filter(function (x) { return x.kind === 'confirmed'; })[0];
+    return c ? c.facts : [];
+  }
+  function moves(d) { // how we get between places that day: block headings with "→" + train stops named "A → B"
+    var out = [];
+    d.blocks.forEach(function (b) { if (/→/.test(b.heading) && !b.optional) out.push({ t: b.heading, sub: '' }); });
+    (STOPS[d.day] || []).forEach(function (x) { if (TRAIN_RX.test(x.stop.typeLabel || '') && /→/.test(x.stop.name) && !x.stop.optional && !x.party) out.push({ t: x.stop.name, sub: x.stop.typeLabel, s: x }); });
+    return out;
+  }
+  function highlights(d) { // the day's main named stops, in planner order (GEN: assembled list)
+    var seen = {}, out = [];
+    (STOPS[d.day] || []).forEach(function (x) {
+      var st = x.stop, n = shortName(st.name);
+      if (out.length >= 4 || st.optional || st.moved || x.ob || isBag(st) || TRAIN_RX.test(st.typeLabel || '') || /^(pack|konbini)/i.test(n) || seen[n]) return;
+      if (/airport|arrival|hotel|ryokan|inn\b/i.test(st.typeLabel || '') && !/kaiseki|dinner/i.test(st.typeLabel || '')) return;
+      seen[n] = 1; out.push(n);
+    });
+    return out;
+  }
+  var GLOSSARY = [ // GEN: app's own explanations of words the planner uses
+    ['JST', 'Japan time'], ['N’EX', 'Narita Express — the airport train'], ['Shinkansen', 'bullet train'], ['Hikari · Nozomi', 'bullet-train services'],
+    ['Romancecar', 'Odakyu’s express train to Hakone'], ['Ryokan', 'traditional Japanese inn'], ['Konbini', 'convenience store'],
+    ['Suica', 'tap-on transit card'], ['Kaiseki', 'multi-course Japanese dinner'], ['Ekiben', 'boxed lunch for the train']];
+  function tripHTML() {
+    var first = dayObj(DAYS[0]), last = dayObj(DAYS[DAYS.length - 1]), facts = confirmedFacts(), st = state(), today = st.phase === 'trip' ? st.day : null;
+    var factOf = function (re) { return facts.filter(function (f) { return re.test(f.key); })[0]; };
+    var h = '<header class="p-hero"><p class="d-eyebrow">' + esc(first.eyebrow.split(' · ')[0]) + ' – ' + esc(last.eyebrow.split(' · ')[0]) + '</p><h1 class="p-title">The trip</h1></header>';
+    // route: city → city, nights, hotel (hotel = the day header after the date)
+    h += '<section class="ov-route" aria-label="Route"><ol>' + TRIP.nav.map(function (g) {
+      var ds = g.days.map(function (x) { return +x.id.slice(1); }), d0 = dayObj(ds[0]), hotel = d0.eyebrow.split(' · ').slice(1).join(' · ').replace(/^→\s*/, '');
+      return '<li><a href="#d' + ds[0] + '"><span class="ov-c">' + esc(g.city) + '</span><span class="ov-dates">' + esc(g.days[0].label) + (ds.length > 1 ? ' – ' + esc(g.days[ds.length - 1].label) : '') + '</span>' +
+        '<span class="ov-h">' + ic('🏨') + esc(hotel) + '</span></a></li>';
+    }).join('') + '</ol></section>';
+    var fl = factOf(/flight/i), beds = factOf(/bed/i);
+    if (fl || beds) h += '<section class="ov-box"><h2 class="ov-k">Flights &amp; hotels</h2>' + (fl ? '<p>' + ic('✈️') + fl.paras[0] + '</p>' : '') + (beds ? '<p>' + ic('🛏️') + beds.paras[0] + '</p>' : '') + '</section>';
+    // getting between cities
+    var mv = [];
+    DAYS.forEach(function (n) { moves(dayObj(n)).forEach(function (m) { mv.push({ day: n, m: m }); }); });
+    if (mv.length) h += '<section class="ov-box"><h2 class="ov-k">Getting between places</h2><ul class="ov-moves">' + mv.map(function (x) {
+      return '<li><a href="#d' + x.day + '"' + (x.m.s ? ' data-jump="' + x.m.s.uid + '"' : '') + '><span class="ov-md">' + esc(dayObj(x.day).eyebrow.split(' · ')[0]) + '</span><span><b>' + esc(x.m.t) + '</b>' + (x.m.sub ? '<span class="ov-ms">' + ic('🚆') + esc(x.m.sub) + '</span>' : '') + '</span></a></li>'; }).join('') + '</ul></section>';
+    // day by day
+    h += '<h2 class="p-h">Day by day</h2><ol class="ov-days">' + DAYS.map(function (n) {
+      var d = dayObj(n), hl = highlights(d), booked = (STOPS[n] || []).filter(function (x) { return x.stop.status && x.stop.status.kind === 'booked'; }).length, travel = moves(d).length;
+      return '<li class="' + (n === today ? 'is-today' : '') + '"><a href="#d' + n + '"><span class="ov-dd"><b>' + n + '</b>' + esc(d.eyebrow.split(' ')[0]) + '</span><span class="ov-db"><span class="ov-dt">' + esc(d.title) + (n === today ? ' <span class="ov-now">Today</span>' : '') + '</span>' +
+        (hl.length ? '<span class="ov-hl">' + esc(hl.join(' · ')) + '</span>' : '') +
+        '<span class="ov-tags"><span>' + esc(cityOf(d)) + '</span>' + (travel ? '<span>' + ic('🚆') + 'travel day</span>' : '') + (booked ? '<span class="ok">' + ic('✅') + booked + ' booked</span>' : '') + '</span></span><span class="chev" aria-hidden="true">›</span></a></li>';
+    }).join('') + '</ol>';
+    // booked vs flexible
+    var conf = facts.filter(function (f) { return !/people|flight|bed/i.test(f.key); });
+    h += '<section class="ov-box"><h2 class="ov-k">Booked for sure</h2><ul class="ov-conf">' + conf.map(function (f) { return '<li>' + ic('✅') + '<b>' + esc(f.key) + '</b> ' + f.paras[0] + '</li>'; }).join('') + '</ul>' +
+      '<p class="ov-legend"><span class="st st-booked">' + ic('✅') + 'Booked</span><span class="st st-target">' + ic('🎯') + 'Target</span><span class="st st-walkin">' + ic('🚶') + 'Walk-in</span><span class="st">' + ic('📌') + 'Plan</span></p>' +
+      '<p class="fine">Everything without “Booked” is flexible. ~ before a time means about.</p><div class="w-act"><a class="btn" href="#bookings">All bookings</a></div></section>';
+    h += '<details class="grp ov-gl"><summary><span>Words you’ll see</span></summary><dl class="gl">' + GLOSSARY.map(function (g) { return '<dt>' + esc(g[0]) + '</dt><dd>' + esc(g[1]) + '</dd>'; }).join('') + '</dl></details>';
+    h += '<p class="ov-foot"><a href="#sources">Sources</a> · <a href="#prep">Prep</a> · <a href="#watch">Watch list</a></p>';
+    return h;
+  }
+  function meLinks() {
+    return '<div class="me-links"><a class="row-link" href="#trip">' + ic('🗺️') + 'The trip at a glance<span class="chev" aria-hidden="true">›</span></a>' +
+      '<a class="row-link" href="#sources">' + ic('📚') + 'Sources<span class="chev" aria-hidden="true">›</span></a></div>';
   }
 
   /* ---------------- rendering: panels ---------------- */
   function panelHTML(p) {
     var h = '<header class="p-hero"><h1 class="p-title">' + esc(p.title) + '</h1>' + (p.lead ? '<p class="p-lead">' + esc(p.lead) + '</p>' : '') + '</header>';
+    if (p.id === 'bookings') {
+      var R = allRefs();
+      if (R.length) h += '<section class="refs-box" aria-label="Booking references"><h2>' + ic('🎫') + 'Booking references</h2>' + R.map(function (x) {
+        return '<a class="refs-i" href="#d' + x.day + '" data-jump="' + x.s.uid + '"><span class="refs-n">' + esc(x.s.stop.name) + '<span class="refs-d">' + esc(dayObj(x.day).eyebrow.split(' · ')[0]) + ' · ' + esc(x.s.stop.time) + '</span></span>' +
+          x.refs.map(function (r) { return '<span class="ref"><span class="ref-k">' + esc(r.label) + '</span> <span class="ref-c">' + esc(r.code) + '</span></span>'; }).join('') + '</a>';
+      }).join('') + '<p class="fine">Only these are written in the plan. Other confirmations are in your email.</p></section>';
+    }
     var done = LS.get('bk', {}), inList = false;
     p.parts.forEach(function (x) {
       if (x.kind !== 'booking' && inList) { h += '</div>'; inList = false; }
@@ -669,7 +889,7 @@
         rail += '<a href="#' + x.id + '" data-day="' + n + '" class="' + (n === td ? 'is-today' : '') + '"><span class="r-d">' + n + '</span><span class="r-l" title="' + esc(d.title) + '">' + esc(parts[0] + ' · ' + d.title) + '</span>' + (n === td ? '<span class="r-today">Today</span>' : '') + '</a>';
       });
     });
-    rail += '<h3>Planning</h3>' + TRIP.panels.map(function (p) { return '<a href="#' + p.id + '" data-view="' + p.id + '"><span class="r-l">' + esc(p.title) + '</span></a>'; }).join('');
+    rail += '<h3>Planning</h3><a href="#trip" data-view="trip"><span class="r-l">The trip at a glance</span></a>' + TRIP.panels.map(function (p) { return '<a href="#' + p.id + '" data-view="' + p.id + '"><span class="r-l">' + esc(p.title) + '</span></a>'; }).join('');
     $('#strip').innerHTML = strip; $('#rail').innerHTML = rail;
   }
 
@@ -679,7 +899,8 @@
   function parseHash() {
     var h = location.hash.replace(/^#/, ''), m = /^d(\d{1,2})$/.exec(h);
     if (m && DAYS.indexOf(+m[1]) >= 0) return { view: 'day', day: +m[1] };
-    if (/^(bookings|watch|prep|sources)$/.test(h)) return { view: h };
+    if (/^(bookings|watch|prep|sources|trip)$/.test(h)) return { view: h };
+    if (h === 'today') return { view: 'day', day: defaultDay(), today: true };
     return { view: 'day', day: lastDay || defaultDay() };
   }
   var pendingJump = null, rendered = false, quietRender = false;
@@ -693,16 +914,21 @@
       v.innerHTML = dayHTML(d);
       document.title = d.eyebrow.split(' · ')[0] + ' · ' + (CFG.title || 'Japan 2027');
       applyParty();
+    } else if (ROUTE.view === 'trip') {
+      v.innerHTML = tripHTML();
+      document.title = 'The trip · ' + (CFG.title || 'Japan 2027');
     } else {
       var p = TRIP.panels.filter(function (x) { return x.id === ROUTE.view; })[0];
       v.innerHTML = panelHTML(p);
       document.title = p.title + ' · ' + (CFG.title || 'Japan 2027');
     }
-    // nav state
+    if (ROUTE.today) { history.replaceState(null, '', location.pathname + location.search + '#d' + ROUTE.day); }
+    // nav state: Today = today's day view; Days = the trip overview or any other day
+    var isToday = ROUTE.view === 'day' && ROUTE.day === defaultDay();
     $$('[data-view]').forEach(function (a) {
-      var on = a.getAttribute('data-view') === ROUTE.view;
+      var k = a.getAttribute('data-view');
+      var on = k === 'today' ? isToday : k === 'trip' ? (ROUTE.view === 'trip' || (ROUTE.view === 'day' && !isToday)) : k === ROUTE.view;
       if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
-      if (a.getAttribute('data-view') === 'day') a.setAttribute('href', '#d' + (lastDay || defaultDay()));
     });
     $$('#strip a, #rail a[data-day]').forEach(function (a) {
       if (ROUTE.view === 'day' && +a.getAttribute('data-day') === ROUTE.day) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
@@ -720,6 +946,7 @@
     reveal();
     if (pendingJump) {
       var el = document.getElementById(pendingJump); pendingJump = null;
+      if (el && el.closest('.party[hidden]')) { LS.set('party', 'all'); applyParty(); renderLive(); }
       if (el) { setTimeout(function () { el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' }); }, 60); return; }
     }
     if (!quietRender && (prev.view !== ROUTE.view || prev.day !== ROUTE.day)) window.scrollTo(0, 0);
@@ -761,7 +988,7 @@
     var d = $('#mesheet'); SHEET.open = kind;
     $('#me-h').textContent = kind === 'wx' ? 'Weather' + (WX.city ? ' · ' + WX.city : '') : 'You & alerts';
     d.classList.toggle('is-wx', kind === 'wx');
-    $('#me-b').innerHTML = kind === 'wx' ? weatherHTML(false) : liveSlot();
+    $('#me-b').innerHTML = kind === 'wx' ? weatherHTML(false) : liveSlot() + meLinks();
     if (kind === 'wx' && !WX.data && !WX.loading) loadWeather(true);
     showSheet(d);
   }
@@ -801,6 +1028,7 @@
       if (a.hasAttribute('data-close')) { closeSheet(a.closest('dialog')); return; }
       var act = a.getAttribute('data-act');
       if (act === 'me') openInfo('me');
+      else if (act === 'diet') { e.preventDefault(); $('#dietbtn').click(); }
       else if (act === 'wxsheet') openInfo('wx');
       else if (act === 'geo') askLocation(a);
       else if (act === 'notify') askNotify(a);
@@ -854,7 +1082,8 @@
     tb.addEventListener('click', function () { var m = modes[(modes.indexOf(LS.get('theme', 'auto')) + 1) % 3]; LS.set('theme', m); setTheme(m); toast('Appearance: ' + { auto: 'Automatic', light: 'Light', dark: 'Dark' }[m]); });
     $('#brand').addEventListener('click', function (e) { e.preventDefault(); goToday(); });
     // tab bar: tapping "Days" again while on a day jumps back to today (like re-tapping an iOS tab)
-    $$('#tabbar a[data-view="day"]').forEach(function (a) { a.addEventListener('click', function (e) { if (ROUTE.view === 'day') { e.preventDefault(); goToday(); } }); });
+    $$('[data-view="today"]').forEach(function (a) { a.addEventListener('click', function (e) { e.preventDefault(); goToday(); }); });
+    window.addEventListener('hashchange', function () { $$('dialog.sheet[open]').forEach(function (d) { closeSheet(d); }); });
     window.addEventListener('scroll', function () { if (!nbRaf) nbRaf = requestAnimationFrame(function () { nbRaf = 0; nextBarVis(); }); }, { passive: true });
     // network status: one quiet pill, never a blocking banner
     function net() { $('#net').hidden = navigator.onLine; document.documentElement.classList.toggle('is-offline', !navigator.onLine); }
