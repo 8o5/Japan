@@ -7,13 +7,14 @@
 .pill,.btn,.lk,.nb-go,.wx-chip,.diet-chip,.ref-copy,.row-link,.nc-nudge,.d-nav a,.iconbtn.x,.nc-trip,.nc-bags{
   transition:transform var(--press-ms) var(--ease-out),background-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
 .pill:active,.btn:active,.lk:active,.nb-go:active,.wx-chip:active,.diet-chip:active,.ref-copy:active,.row-link:active,.nc-nudge:active,.d-nav a:active,.iconbtn.x:active{transform:scale(var(--press-scale))}
-/* big surfaces press less (a 97% card looks like it jumps) */
-a.nc-row,.nc-trip,.nc-bags,.ov-days a,.ov-route li a,.refs-i[href]{transition:transform var(--press-ms) var(--ease-out),background-color var(--dur-fast) var(--ease-out)}
-a.nc-row:active,.nc-trip:active,.nc-bags:active,.ov-days a:active,.ov-route li a:active,a.refs-i:active{transform:scale(var(--press-scale-lg))}
-/* list rows: no iOS gray tap flash, and the press waits 90 ms so a finger that lands on a row to scroll
-   (iOS drops :active once the scroll starts) doesn't flicker it. Release stays instant. */
-a.nc-row,.nc-trip,.nc-bags,.ov-days a,.ov-route li a,.ov-moves a,a.refs-i,.strip a{-webkit-tap-highlight-color:transparent}
-a.nc-row:active,.nc-trip:active,.nc-bags:active,.ov-days a:active,.ov-route li a:active,a.refs-i:active,.strip a:active{transition-delay:90ms}
+/* big list rows (Today rows, trip/bags cards, Days list, route, refs): no press effect at all.
+   iOS Safari blanked the row under a finger for a frame while scrolling when it had a transform
+   transition + :active scale (Nic's screen recording, Nov 13). Rows navigate on tap instantly, so
+   they get no transform, no transition and no gray tap flash. */
+a.nc-row,.nc-trip,.nc-bags,.ov-days a,.ov-route li a,.ov-moves a,a.refs-i,.refs-i[href]{-webkit-tap-highlight-color:transparent;transition:none;transform:none}
+a.nc-row:active,.nc-trip:active,.nc-bags:active,.ov-days a:active,.ov-route li a:active,.ov-moves a:active,a.refs-i:active{transform:none}
+.strip a{-webkit-tap-highlight-color:transparent}
+.strip a:active{transition-delay:90ms}
 /* frequent chrome animates least: tab bar, theme / You buttons, day strip, party filter */
 .tabbar a{transition:color var(--quiet-ms) var(--ease-out),opacity var(--quiet-ms) var(--ease-out)}
 .tabbar .tb-i{transition:none}
