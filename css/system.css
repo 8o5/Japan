@@ -10,6 +10,10 @@
 /* big surfaces press less (a 97% card looks like it jumps) */
 a.nc-row,.nc-trip,.nc-bags,.ov-days a,.ov-route li a,.refs-i[href]{transition:transform var(--press-ms) var(--ease-out),background-color var(--dur-fast) var(--ease-out)}
 a.nc-row:active,.nc-trip:active,.nc-bags:active,.ov-days a:active,.ov-route li a:active,a.refs-i:active{transform:scale(var(--press-scale-lg))}
+/* list rows: no iOS gray tap flash, and the press waits 90 ms so a finger that lands on a row to scroll
+   (iOS drops :active once the scroll starts) doesn't flicker it. Release stays instant. */
+a.nc-row,.nc-trip,.nc-bags,.ov-days a,.ov-route li a,.ov-moves a,a.refs-i,.strip a{-webkit-tap-highlight-color:transparent}
+a.nc-row:active,.nc-trip:active,.nc-bags:active,.ov-days a:active,.ov-route li a:active,a.refs-i:active,.strip a:active{transition-delay:90ms}
 /* frequent chrome animates least: tab bar, theme / You buttons, day strip, party filter */
 .tabbar a{transition:color var(--quiet-ms) var(--ease-out),opacity var(--quiet-ms) var(--ease-out)}
 .tabbar .tb-i{transition:none}
