@@ -11,8 +11,8 @@
    iOS Safari blanked the row under a finger for a frame while scrolling when it had a transform
    transition + :active scale (Nic's screen recording, Nov 13). Rows navigate on tap instantly, so
    they get no transform, no transition and no gray tap flash. */
-a.nc-row,.nc-trip,.nc-bags,.ov-days a,.ov-route li a,.ov-moves a,a.refs-i,.refs-i[href]{-webkit-tap-highlight-color:transparent;transition:none;transform:none}
-a.nc-row:active,.nc-trip:active,.nc-bags:active,.ov-days a:active,.ov-route li a:active,.ov-moves a:active,a.refs-i:active{transform:none}
+a.nc-row,.nc-trip,.nc-bags,.ov-days a,.ov-route li a,.ov-hls a,a.refs-i,.refs-i[href]{-webkit-tap-highlight-color:transparent;transition:none;transform:none}
+a.nc-row:active,.nc-trip:active,.nc-bags:active,.ov-days a:active,.ov-route li a:active,.ov-hls a:active,a.refs-i:active{transform:none}
 .strip a{-webkit-tap-highlight-color:transparent}
 .strip a:active{transition-delay:90ms}
 /* frequent chrome animates least: tab bar, theme / You buttons, day strip, party filter */
@@ -77,7 +77,7 @@ a.nc-row:active,.nc-trip:active,.nc-bags:active,.ov-days a:active,.ov-route li a
 .p-lead,.d-start2,.s-act,.nt-t,.leg-t,.glance-n,.bk-n,.nc-start,.p-para,.prose p,.dr-v p{text-wrap:pretty}
 
 /* --- tabular numbers on everything that ticks or lines up (tip 18) --- */
-.nc-m,.nc-lt,.nc-ot,.nc-badge,.nb-k,.leave,.dl-w,.bk-when,.ov-md,.ov-dates,.refs-d,.glance li,.s-meta,.nc-mini-t,.mockbar,.nc-tz,.wx-d,.d-start,.it-t,.nc-go,.ov-dd,.rail .r-d,.strip .s-d,.wx-t,.wx-chip,.now-big,.nc-clock{font-variant-numeric:tabular-nums}
+.nc-m,.nc-lt,.nc-ot,.nc-badge,.nb-k,.leave,.dl-w,.bk-when,.ov-dates,.refs-d,.glance li,.s-meta,.nc-mini-t,.mockbar,.nc-tz,.wx-d,.d-start,.it-t,.nc-go,.ov-dd,.rail .r-d,.strip .s-d,.wx-t,.wx-chip,.now-big,.nc-clock{font-variant-numeric:tabular-nums}
 
 /* --- optical alignment (tip 17) --- */
 .strip a{position:relative}

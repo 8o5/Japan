@@ -260,14 +260,23 @@ html.is-offline .brand .sun::after{content:"";position:absolute;right:-3px;botto
 .ov-box{margin-top:18px;padding:16px 18px;border-radius:var(--r-lg);background:var(--card);border:1px solid var(--line)}
 .ov-box p{margin:6px 0 0;font-size:.912rem;line-height:1.45}
 .ov-k{margin:0 0 4px;font-size:.706rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3)}
-.ov-moves,.ov-conf{list-style:none;margin:6px 0 0;padding:0;display:grid}
-.ov-moves a{display:flex;gap:12px;align-items:baseline;padding:10px 0;border-top:1px solid var(--line);color:var(--ink);text-decoration:none;min-height:44px}
-.ov-moves li:first-child a{border-top:0}
-.ov-md{flex:none;width:5.2em;font-size:.794rem;font-weight:700;color:var(--ink-3)}
-.ov-ms{display:block;font-size:.794rem;color:var(--ink-2)}
-.ov-conf li{padding:8px 0;border-top:1px solid var(--line);font-size:.882rem;line-height:1.4}
+.ov-conf,.ov-hls{list-style:none;margin:6px 0 0;padding:0;display:grid}
+.ov-conf li{display:flex;gap:2px;padding:8px 0;border-top:1px solid var(--line);font-size:.882rem;line-height:1.4}
 .ov-conf li:first-child{border-top:0}
 .ov-legend{display:flex;flex-wrap:wrap;gap:6px}
+.ov-sum{display:flex;flex-wrap:wrap;gap:4px 16px;margin:12px 0 0;font-size:.912rem;font-weight:600;color:var(--ink-2)}
+.ov-chain{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:10px 0 0;font-size:1.059rem;font-weight:700;letter-spacing:-.01em}
+.ov-chain b{display:inline-grid;place-items:center;min-width:1.5em;padding:1px 6px;border-radius:999px;background:var(--accent-wash);color:var(--accent);font-size:.8em;font-variant-numeric:tabular-nums}
+.ov-arr{color:var(--ink-3);font-weight:400}
+.ov-n{margin-left:8px;font-size:.735rem;font-weight:700;color:var(--accent);background:var(--accent-wash);padding:2px 8px;border-radius:999px;vertical-align:3px;letter-spacing:0;white-space:nowrap}
+.ov-mv{font-size:.824rem;color:var(--ink-3)}
+.ov-dh{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0 12px}
+.ov-key{margin:0 0 12px;font-size:.794rem;font-weight:600;color:var(--ink-3)}
+.ov-key .ic:not(:first-child){margin-left:10px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.ov-hls{grid-template-columns:repeat(auto-fill,minmax(min(100%,15em),1fr));gap:0 16px}
+.ov-hls a{display:flex;align-items:center;gap:4px;min-height:44px;padding:6px 0;border-top:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:.912rem;font-weight:600}
+.ov-hd{flex:none;width:2em;font-size:.794rem;font-weight:700;color:var(--ink-3);font-variant-numeric:tabular-nums}
 .ov-days{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .ov-days a{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:18px;background:var(--card);border:1px solid var(--line);color:var(--ink);text-decoration:none;min-height:64px}
 .ov-days li.is-today a{box-shadow:0 0 0 2px var(--accent)}
@@ -275,7 +284,6 @@ html.is-offline .brand .sun::after{content:"";position:absolute;right:-3px;botto
 .ov-dd b{display:block;font-size:1.412rem;color:var(--ink);font-variant-numeric:tabular-nums}
 .ov-db{flex:1;min-width:0;display:grid;gap:3px}
 .ov-dt{font-weight:700;font-size:1rem;line-height:1.25;letter-spacing:-.01em}
-.ov-hl{font-size:.824rem;color:var(--ink-2);line-height:1.35}
 .ov-tags{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.735rem;font-weight:600;color:var(--ink-3)}
 .ov-tags .ok{color:var(--ok)}
 .ov-now{font-size:.647rem;font-weight:800;text-transform:uppercase;color:var(--on-accent);background:var(--accent);padding:2px 6px;border-radius:5px;vertical-align:2px}

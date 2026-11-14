@@ -143,4 +143,18 @@
     });
     return out;
   };
+  /* The day's stops the planner itself names in the day title ("teamLab, Tsukiji, Pokémon Café, Tokyo Tower"), in
+     planner order, one per title word. Selection only: the names are planner text. */
+  var fold = function (s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); };
+  R.titleStops = function (d) {
+    var title = fold(d.title), used = {}, out = [];
+    (P.stops[d.day] || []).forEach(function (x) {
+      var st = x.stop, n = R.shortName(st.name), w = (fold(n).split(/\s+/)[0].match(/^[a-z]{3,}/) || [])[0]; // the name's first word
+      if (!w || used[w] || st.optional || st.moved || x.ob || R.isBag(st) || TRAIN_RX.test(st.typeLabel || '')) return;
+      if (/airport|arrival|hotel|ryokan|inn\b/i.test(st.typeLabel || '')) return;
+      if (!new RegExp('\\b' + w + '\\b').test(title)) return;
+      used[w] = 1; out.push({ s: x, name: n });
+    });
+    return out;
+  };
 })(window.TripApp);

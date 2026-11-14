@@ -188,35 +188,44 @@
     ['Romancecar', 'Odakyu’s express train to Hakone'], ['Ryokan', 'traditional Japanese inn'], ['Konbini', 'convenience store'],
     ['Suica', 'tap-on transit card'], ['Kaiseki', 'multi-course Japanese dinner'], ['Ekiben', 'boxed lunch for the train']];
   function navDays(g) { return g.days.map(function (x) { return +x.id.slice(1); }); } // nav group "d14" ids → day numbers
+  function moveIc(m) { return /shinkansen/i.test(m.sub) ? '🚄' : /\bbus\b/i.test(m.t + ' ' + m.sub) ? '🚌' : '🚆'; } // GEN: icon only
   V.tripHTML = function () {
     var DAYS = P.days, first = P.day(DAYS[0]), last = P.day(DAYS[DAYS.length - 1]), facts = confirmedFacts(), st = N.state(), today = st.phase === 'trip' ? st.day : null;
     var factOf = function (re) { return facts.filter(function (f) { return re.test(f.key); })[0]; };
-    var h = '<header class="p-hero"><p class="d-eyebrow">' + esc(P.dayLabel(first)) + ' – ' + esc(P.dayLabel(last)) + '</p><h1 class="p-title">The trip</h1></header>';
-    // route: city → city, nights, hotel (hotel = the day header after the date)
-    h += '<section class="ov-route" aria-label="Route"><ol>' + P.trip.nav.map(function (g) {
-      var ds = navDays(g), d0 = P.day(ds[0]), hotel = d0.eyebrow.split(' · ').slice(1).join(' · ').replace(/^→\s*/, '');
-      return '<li><a href="#d' + ds[0] + '"><span class="ov-c">' + esc(g.city) + '</span><span class="ov-dates">' + esc(g.days[0].label) + (ds.length > 1 ? ' – ' + esc(g.days[ds.length - 1].label) : '') + '</span>' +
-        '<span class="ov-h">' + ic('🏨') + esc(hotel) + '</span></a></li>';
+    // stays: city, nights (every day but the last has a night), hotel (= the day header after the date), how we get there
+    var stays = P.trip.nav.map(function (g) {
+      var ds = navDays(g), d0 = P.day(ds[0]), mv = [];
+      ds.forEach(function (n) { R.moves(P.day(n)).forEach(function (m) { mv.push(m); }); });
+      return { g: g, ds: ds, nights: ds.filter(function (n) { return n !== DAYS[DAYS.length - 1]; }).length, hotel: d0.eyebrow.split(' · ').slice(1).join(' · ').replace(/^→\s*/, ''), mv: mv };
+    });
+    var nights = stays.reduce(function (t, x) { return t + x.nights; }, 0);
+    var h = '<header class="p-hero"><p class="d-eyebrow">' + esc(P.dayLabel(first)) + ' – ' + esc(P.dayLabel(last)) + '</p><h1 class="p-title">The trip</h1>' +
+      '<p class="ov-sum"><span>' + ic('🗓️') + DAYS.length + ' days</span><span>' + ic('🌙') + nights + ' nights</span><span>' + ic('🏨') + stays.length + ' hotels</span></p>' +
+      '<p class="ov-chain" aria-label="City order">' + stays.map(function (x, i) { return '<span>' + (i ? '<span class="ov-arr" aria-hidden="true">→ </span>' : '') + esc(x.g.city.split(' · ').pop()) + ' <b>' + x.nights + '</b></span>'; }).join('') + '</p></header>';
+    // route: one card per stay
+    h += '<section class="ov-route" aria-label="Where we sleep"><ol>' + stays.map(function (x) {
+      var ds = x.ds;
+      return '<li><a href="#d' + ds[0] + '"><span class="ov-c">' + esc(x.g.city) + '<span class="ov-n">' + x.nights + (x.nights === 1 ? ' night' : ' nights') + '</span></span><span class="ov-dates">' + esc(x.g.days[0].label) + (ds.length > 1 ? ' – ' + esc(x.g.days[ds.length - 1].label) : '') + '</span>' +
+        '<span class="ov-h">' + ic('🏨') + esc(x.hotel) + '</span>' +
+        x.mv.map(function (m) { return '<span class="ov-mv">' + ic(moveIc(m)) + esc(m.t) + '</span>'; }).join('') + '</a></li>';
     }).join('') + '</ol></section>';
-    var fl = factOf(/flight/i), beds = factOf(/bed/i);
-    if (fl || beds) h += '<section class="ov-box"><h2 class="ov-k">Flights &amp; hotels</h2>' + (fl ? '<p>' + ic('✈️') + fl.paras[0] + '</p>' : '') + (beds ? '<p>' + ic('🛏️') + beds.paras[0] + '</p>' : '') + '</section>';
-    // getting between cities
-    var mv = [];
-    DAYS.forEach(function (n) { R.moves(P.day(n)).forEach(function (m) { mv.push({ day: n, m: m }); }); });
-    if (mv.length) h += '<section class="ov-box"><h2 class="ov-k">Getting between places</h2><ul class="ov-moves">' + mv.map(function (x) {
-      return '<li><a href="#d' + x.day + '"' + (x.m.s ? ' data-jump="' + x.m.s.uid + '"' : '') + '><span class="ov-md">' + esc(P.dayLabel(P.day(x.day))) + '</span><span><b>' + esc(x.m.t) + '</b>' + (x.m.sub ? '<span class="ov-ms">' + ic('🚆') + esc(x.m.sub) + '</span>' : '') + '</span></a></li>'; }).join('') + '</ul></section>';
-    // day by day
-    h += '<h2 class="p-h">Day by day</h2><ol class="ov-days">' + DAYS.map(function (n) {
-      var d = P.day(n), hl = R.highlights(d), booked = (P.stops[n] || []).filter(function (x) { return x.stop.status && x.stop.status.kind === 'booked'; }).length, travel = R.moves(d).length;
+    // day by day: one line per day
+    h += '<div class="ov-dh"><h2 class="p-h">Day by day</h2><p class="ov-key">' + ic('🚆') + 'travel ' + ic('✅') + 'booked</p></div><ol class="ov-days">' + DAYS.map(function (n) {
+      var d = P.day(n), booked = (P.stops[n] || []).filter(function (x) { return x.stop.status && x.stop.status.kind === 'booked'; }).length, travel = R.moves(d).length;
       return '<li class="' + (n === today ? 'is-today' : '') + '"><a href="#d' + n + '"><span class="ov-dd"><b>' + n + '</b>' + esc(d.eyebrow.split(' ')[0]) + '</span><span class="ov-db"><span class="ov-dt">' + esc(d.title) + (n === today ? ' <span class="ov-now">Today</span>' : '') + '</span>' +
-        (hl.length ? '<span class="ov-hl">' + esc(hl.join(' · ')) + '</span>' : '') +
-        '<span class="ov-tags"><span>' + esc(N.cityOf(d)) + '</span>' + (travel ? '<span>' + ic('🚆') + 'travel day</span>' : '') + (booked ? '<span class="ok">' + ic('✅') + booked + ' booked</span>' : '') + '</span></span><span class="chev" aria-hidden="true">›</span></a></li>';
+        '<span class="ov-tags"><span>' + esc(N.cityOf(d)) + '</span>' + (travel ? '<span title="Travel day">' + ic('🚆') + '<span class="vh">travel day</span></span>' : '') + (booked ? '<span class="ok" title="Booked">' + ic('✅') + booked + '<span class="vh"> booked</span></span>' : '') + '</span></span><span class="chev" aria-hidden="true">›</span></a></li>';
     }).join('') + '</ol>';
-    // booked vs flexible
-    var conf = facts.filter(function (f) { return !/people|flight|bed/i.test(f.key); });
-    h += '<section class="ov-box"><h2 class="ov-k">Booked for sure</h2><ul class="ov-conf">' + conf.map(function (f) { return '<li>' + ic('✅') + '<b>' + esc(f.key) + '</b> ' + f.paras[0] + '</li>'; }).join('') + '</ul>' +
+    // highlights: the stops each day's title names
+    var hl = [];
+    DAYS.forEach(function (n) { R.titleStops(P.day(n)).forEach(function (x) { hl.push(x); }); });
+    if (hl.length) h += '<section class="ov-box"><h2 class="ov-k">Highlights</h2><ul class="ov-hls">' + hl.map(function (x) {
+      return '<li><a href="#d' + x.s.day + '" data-jump="' + x.s.uid + '"><span class="ov-hd">' + x.s.day + '</span>' + ic(R.typeIcon(x.s.stop.typeLabel) || '⭐') + esc(x.name) + '</a></li>'; }).join('') + '</ul></section>';
+    // what's booked: flights, hotels, then the confirmed stops
+    var fl = factOf(/flight/i), beds = factOf(/bed/i), conf = facts.filter(function (f) { return !/people|flight|bed/i.test(f.key); });
+    var row = function (i, f) { return '<li>' + ic(i) + '<span><b>' + esc(f.key) + '</b> ' + f.paras[0] + '</span></li>'; };
+    h += '<section class="ov-box"><h2 class="ov-k">What’s booked</h2><ul class="ov-conf">' + (fl ? row('✈️', fl) : '') + (beds ? row('🏨', beds) : '') + conf.map(function (f) { return row('✅', f); }).join('') + '</ul>' +
       '<p class="ov-legend"><span class="st st-booked">' + ic('✅') + 'Booked</span><span class="st st-target">' + ic('🎯') + 'Target</span><span class="st st-walkin">' + ic('🚶') + 'Walk-in</span><span class="st">' + ic('📌') + 'Plan</span></p>' +
-      '<p class="fine">Everything without “Booked” is flexible. ~ before a time means about.</p><div class="w-act"><a class="btn" href="#bookings">All bookings</a></div></section>';
+      '<p class="fine">Not booked = flexible. ~ = about.</p><div class="w-act"><a class="btn" href="#bookings">All bookings</a></div></section>';
     h += '<details class="grp ov-gl"><summary><span>Words you’ll see</span></summary><dl class="gl">' + GLOSSARY.map(function (g) { return '<dt>' + esc(g[0]) + '</dt><dd>' + esc(g[1]) + '</dd>'; }).join('') + '</dl></details>';
     h += '<p class="ov-foot"><a href="#sources">Sources</a> · <a href="#prep">Prep</a> · <a href="#watch">Watch list</a><span class="kbd-hint"> · ' + (/Mac|iP(hone|ad)/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl+K') + ' to jump</span></p>';
     return h;

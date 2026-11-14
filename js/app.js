@@ -437,17 +437,38 @@
      a plan: also hands it to the waiter. After boot: ingested (re-render, "Plan updated" toast when opts.updated). */
   var JP27 = window.JP27 = { renderLive: function () { if (P.trip) C.renderLive(); }, now: now, ls: LS, state: function () { return P.trip ? N.state() : null }, ready: false };
   var waiter = null;
+  /* What's on screen, as a key-order-independent fingerprint of [trip, overrides, places]. A re-delivery of the
+     same plan (the saved copy again, or the server answering with what we already have) is not re-rendered. */
+  var SHOWN = null, SHOWN_FP = null; // SHOWN: the payload on screen; its fingerprint is taken lazily (not on the boot path)
+  function planFp(r) {
+    try { return JSON.stringify(r, function (k, v) { if (!v || typeof v !== 'object' || Array.isArray(v)) return v; var o = {}; Object.keys(v).sort().forEach(function (x) { o[x] = v[x]; }); return o; }); }
+    catch (e) { return null; }
+  }
+  function take(d, opts) {
+    var r = fromPayload(d), fp = planFp(r);
+    if (SHOWN && SHOWN_FP === null) SHOWN_FP = planFp(SHOWN);
+    if (!opts.updated && fp && fp === SHOWN_FP) return;
+    SHOWN = r; SHOWN_FP = fp; ingest(r, opts);
+  }
   JP27.provideData = function (d, opts) {
     JP27._pending = { d: d, opts: opts || {} };
-    if (JP27.ready) ingest(fromPayload(d), opts || {});
+    if (JP27.ready) take(d, opts || {});
     else if (waiter) waiter(fromPayload(d));
   };
+  /* The plan this phone saved last time (js/live.js keeps it in jp27.tripCache and hands the same copy over
+     once it starts). Reading it here lets a cold launch go skeleton → plan without the waiting screen. */
+  function savedPlan() {
+    var c = LS.get('tripCache', null);
+    return c && c.trip && Array.isArray(c.trip.days) ? fromPayload(c) : null;
+  }
   /* App-shell mode (CFG.dataSource === 'firestore'): the public site carries no itinerary; js/live.js
      fetches it from Firestore after this phone is linked and hands it over via JP27.provideData(). */
   function shellPlan() {
+    if (JP27._pending) return Promise.resolve(fromPayload(JP27._pending.d));
+    var saved = savedPlan();
+    if (saved) return Promise.resolve(saved);
     $('#view').innerHTML = '<div class="shell-wait"><span class="sun big" aria-hidden="true"></span><h1>Japan 2027</h1><p class="shell-sub">Nic &amp; Elly · 9–21 January</p><div class="live-slot" id="shell-slot"></div></div>';
     document.body.classList.add('v-shell');
-    if (JP27._pending) return Promise.resolve(fromPayload(JP27._pending.d));
     return new Promise(function (res) {
       waiter = res;
       if (window.JP27_LIVE && window.JP27_LIVE.refresh) window.JP27_LIVE.refresh();
@@ -459,6 +480,7 @@
   function start(r) {
     document.body.classList.remove('v-shell');
     if (CFG.dataSource !== 'firestore') DATA_FP = dataFp(r);
+    SHOWN = r; SHOWN_FP = null;
     P.set(r[0], r[1], r[2]);
     A.buildNav(); bind(); render();
     $('#dietbtn').hidden = false; // only once a plan is loaded (app-shell mode starts without one)
@@ -468,7 +490,7 @@
     document.addEventListener('visibilitychange', function () { if (!document.hidden) C.renderLive(); });
     if (/[?&]qa=1/.test(location.search)) setTimeout(qaReport, 1200);
     JP27.ready = true; waiter = null;
-    if (JP27._pending) ingest(fromPayload(JP27._pending.d), JP27._pending.opts || {});
+    if (JP27._pending) take(JP27._pending.d, JP27._pending.opts || {});
     document.dispatchEvent(new Event('jp27:ready'));
     exposeTrip();
   }
