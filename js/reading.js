@@ -133,16 +133,6 @@
     (P.stops[d.day] || []).forEach(function (x) { if (TRAIN_RX.test(x.stop.typeLabel || '') && /→/.test(x.stop.name) && !x.stop.optional && !x.party) out.push({ t: x.stop.name, sub: x.stop.typeLabel, s: x }); });
     return out;
   };
-  R.highlights = function (d) { // the day's main named stops, in planner order (GEN: assembled list)
-    var seen = {}, out = [];
-    (P.stops[d.day] || []).forEach(function (x) {
-      var st = x.stop, n = R.shortName(st.name);
-      if (out.length >= 4 || st.optional || st.moved || x.ob || R.isBag(st) || TRAIN_RX.test(st.typeLabel || '') || /^(pack|konbini)/i.test(n) || seen[n]) return;
-      if (/airport|arrival|hotel|ryokan|inn\b/i.test(st.typeLabel || '') && !/kaiseki|dinner/i.test(st.typeLabel || '')) return;
-      seen[n] = 1; out.push(n);
-    });
-    return out;
-  };
   /* The day's stops the planner itself names in the day title ("teamLab, Tsukiji, Pokémon Café, Tokyo Tower"), in
      planner order, one per title word. Selection only: the names are planner text. */
   var fold = function (s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); };

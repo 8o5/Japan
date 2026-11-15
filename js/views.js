@@ -230,7 +230,6 @@
     h += '<p class="ov-foot"><a href="#sources">Sources</a> · <a href="#prep">Prep</a> · <a href="#watch">Watch list</a><span class="kbd-hint"> · ' + (/Mac|iP(hone|ad)/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl+K') + ' to jump</span></p>';
     return h;
   };
-  V.navDays = navDays;
   V.meLinks = function () {
     return '<div class="me-links"><a class="row-link" href="#trip">' + ic('🗺️') + 'The trip at a glance<span class="chev" aria-hidden="true">›</span></a>' +
       '<a class="row-link" href="#sources">' + ic('📚') + 'Sources<span class="chev" aria-hidden="true">›</span></a></div>';
