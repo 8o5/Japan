@@ -42,7 +42,7 @@
   R.isBag = function (stop) { return /^luggage$/i.test(stop.name || '') || /hotel move/i.test(stop.typeLabel || ''); };
 
   /* ---------------- trains: boarding platform, line, gates and exits ---------------- */
-  var TRAIN_RX = R.TRAIN_RX = /train|express|shinkansen|romancecar|\bbus\b/i, BOARD_RX = /platform|\bexit\b|\bgates?\b|concourse|through-service|\bline\b|change at|transfer/i;
+  var TRAIN_RX = /train|express|shinkansen|romancecar|\bbus\b/i, BOARD_RX = /platform|\bexit\b|\bgates?\b|concourse|through-service|\bline\b|change at|transfer/i;
   R.isTrain = function (stop) { return TRAIN_RX.test(stop.typeLabel || ''); };
   /* From the day's start note, the route next to the stop and its details (max 3, no repeats). */
   var transitLines = R.transitLines = function (s) {

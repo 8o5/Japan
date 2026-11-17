@@ -1,7 +1,7 @@
 /* now: where are we in the trip. All maths in Japan time (fixed +09:00), never the device zone.
-   Interface: Now.state() · Now.nextToday(st) · Now.timed(day) · Now.mine(day) · Now.curNext(list, t) · Now.over(s, t)
+   Interface: Now.state() · Now.nextToday(st) · Now.timed(day) · Now.sortTimed(list) · Now.mine(day) · Now.curNext(list, t) · Now.over(s, t)
    · Now.partyPick() / partyMe() · Now.bagInfo(day) · Now.leaveBy(st) · Now.navPick(st) · Now.navTarget(stop)
-   · Now.placeOf(stop) · Now.dirURL(p) · Now.deadlines(n) · Now.geo (last location fix) · Now.geoDenied(). */
+   · Now.placeOf(stop) · Now.isPlannerMapLink(l) · Now.dirURL(p) · Now.deadlines(n) · Now.geo (last location fix) · Now.geoDenied(). */
 (function (T) {
   'use strict';
   var P = T.plan, R = T.reading, LS = T.LS, CFG = T.CFG, now = T.now, jst = T.jst, jstAt = T.jstAt;
@@ -24,7 +24,8 @@
   N.partyPick = function () { return LS.get('party', null) || whoAmI() || 'all'; }; // a phone linked as Elly opens in her lane
   N.partyMe = function () { var p = N.partyPick(); return p === 'nic' || p === 'elly' ? p : null; };
   var mine = N.mine = function (day) { var w = N.partyMe(); return (P.stops[day] || []).filter(function (s) { return !w || !s.party || s.party === w; }); };
-  var timed = N.timed = function (day) { return mine(day).filter(function (s) { return s.t != null; }).sort(function (a, b) { return a.t - b.t; }); };
+  var sortTimed = N.sortTimed = function (list) { return list.filter(function (s) { return s.t != null; }).sort(function (a, b) { return a.t - b.t; }); }; // timed stops, by time
+  var timed = N.timed = function (day) { return sortTimed(mine(day)); };
 
   N.tripDayAt = function (ms) { var j = jst(ms); return (j.y === 2027 && j.m === 1 && P.days.indexOf(j.d) >= 0) ? j.d : null; };
   N.cityOf = function (d) { return (d && d.city || 'Tokyo').split(' · ')[0]; };
@@ -70,8 +71,9 @@
     return ok ? { lat: lat, lng: lng, label: p[2], q: p[3] || p[2] || stop.name } : null;
   };
   /* Planner's own "Map" link (Apple Maps, address query) — the fallback destination when a stop has no verified coordinates. */
+  var isPlannerMapLink = N.isPlannerMapLink = function (l) { return /^https:\/\/maps\.apple\.com\//.test(l.href || ''); };
   function plannerMapQuery(stop) {
-    var l = (stop.links || []).filter(function (x) { return /^https:\/\/maps\.apple\.com\//.test(x.href || ''); })[0];
+    var l = (stop.links || []).filter(function (x) { return isPlannerMapLink(x); })[0];
     if (!l) return null;
     var m = /[?&]daddr=([^&]+)/.exec(l.href); if (!m) return null;
     try { return decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch (e) { return null; }
@@ -81,7 +83,7 @@
     var p = placeOf(stop); if (p) return p;
     var raw = P.places[stop.name]; if (raw && raw[3]) return { q: String(raw[3]) };
     var q = plannerMapQuery(stop); if (!q) return null;
-    var nm = String(stop.name || '').split(' · ')[0].trim();
+    var nm = R.shortName(stop.name);
     return { q: nm && q.toLowerCase().indexOf(nm.toLowerCase()) < 0 ? nm + ', ' + q : q };
   };
   /* p = {lat,lng} (verified coordinates) or {q} (name + address). Apple Maps (opens the Maps app from Safari and the

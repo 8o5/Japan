@@ -28,7 +28,7 @@
     WX.loading = true; WX.city = city; W.render();
     var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + c[0] + '&longitude=' + c[1] +
       '&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FTokyo&forecast_days=7';
-    fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (j) {
+    T.getJSON(url).then(function (j) {
       LS.set(key, { at: Date.now(), data: j }); WX = { city: city, data: j }; W.render();
     }).catch(function () { WX = { city: city, data: cached && cached.data, err: 'Weather unavailable right now', stale: !!cached }; W.render(); });
   };

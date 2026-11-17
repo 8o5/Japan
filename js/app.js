@@ -136,7 +136,6 @@
     d.style.animation = ''; d.style.transition = ''; // hand over from a drag to the close animation (starts where the finger left it)
     setTimeout(function () { d.classList.remove('closing'); d.style.transform = ''; if (d.open) d.close(); }, 240);
   }
-  window.JP27_closeSheet = closeSheet;
   /* #mesheet shows either "You & alerts" (kind 'me') or the weather list (kind 'wx') */
   function openInfo(kind) {
     var d = $('#mesheet'), WX = W.get(); T.sheet.open = kind;
@@ -284,8 +283,8 @@
       if (m === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', m);
       tb.setAttribute('aria-label', 'Appearance: ' + m + '. Tap to change'); tb.title = 'Appearance: ' + m; tb.setAttribute('data-mode', m);
       $$('meta[name="theme-color"]').forEach(function (x) {
-        var dark = /dark/.test(x.getAttribute('media') || '');
-        if (m === 'auto') x.setAttribute('content', dark ? '#15110E' : '#FBF7F1'); else x.setAttribute('content', m === 'dark' ? '#15110E' : '#FBF7F1');
+        var dark = m === 'auto' ? /dark/.test(x.getAttribute('media') || '') : m === 'dark';
+        x.setAttribute('content', dark ? '#15110E' : '#FBF7F1');
       });
     }
     setTheme(LS.get('theme', 'auto'));

@@ -9,7 +9,7 @@
 
   /* ---------------- shared atoms ---------------- */
   /* small "updated Nov 10" tag on anything an override touched */
-  var updTag = V.updTag = function (o) {
+  var updTag = function (o) {
     if (!o || !o._upd || !o._upd.length) return '';
     var u = o._upd[0], d = new Date(u.date + 'T12:00:00Z');
     var lbl = 'updated ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -77,14 +77,14 @@
     // boarding lines not already printed by the day's start note or the route card right before
     var board = s._day ? R.transitLines({ stop: s, day: s._day }).filter(function (c) { return !(P.day(s._day).start2 || []).some(function (h) { return R.plain(h).indexOf(c) >= 0; }) && !R.routeHas(s, c); }) : [];
     if (board.length) h += '<div class="s-board"><span class="sb-k">' + ic('🚉') + 'Boarding</span><ul>' + board.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ul></div>';
-    var refs = R.refsOf(s).filter(function (r) { return (s.flags || []).map(function (f) { return R.plain(f.html); }).join(' ').indexOf(r.code) < 0; });
+    var ft = R.flagText(s), refs = R.refsOf(s).filter(function (r) { return ft.indexOf(r.code) < 0; });
     if (refs.length) h += '<p class="s-refs">' + refs.map(copyRefHTML).join('') + '</p>';
     h += V.dietChip(s);
     if (s.meta && s.meta.length) h += '<p class="s-meta">' + s.meta.map(function (m) {
       return '<span' + (m.who ? ' class="who w-' + esc(m.who) + '"' : '') + '>' + (/^Open\b|^Always open/.test(m.text) ? ic('🕘') : '') + esc(m.text) + '</span>'; }).join('') + '</p>';
     var nav = navHTML(s);
     // Navigate replaces the planner's address-only "Map" link (same destination, but by verified coordinates).
-    var links = (s.links || []).filter(function (l) { return !(nav && /^https:\/\/maps\.apple\.com\//.test(l.href || '')); });
+    var links = (s.links || []).filter(function (l) { return !(nav && N.isPlannerMapLink(l)); });
     if (nav || links.length) h += '<div class="s-links">' + nav + links.map(function (l) {
       return '<a class="lk' + (l.primary ? ' lk-t' : '') + '" href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>'; }).join('') + '</div>';
     if (s.details && s.details.length) h += '<details class="more"><summary>Details</summary><div class="more-b">' + rowsHTML(s.details) + '</div></details>';

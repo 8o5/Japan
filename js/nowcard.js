@@ -33,7 +33,8 @@
     return '<div class="nc-top"><p class="nc-clock"><span class="live" aria-hidden="true"></span>' + esc(fmtJST(st.t)) +
       '<span class="nc-tz">' + esc(T.fmtDayJST(st.t)) + ' · Japan</span></p>' + (navigator.onLine ? '' : '<span class="nc-net">Offline · saved plan</span>') + '<div class="wx-inline"></div></div>';
   }
-  function partyTag(s) { return s.party && !N.partyMe() ? '<span class="who w-' + esc(s.party) + '">' + (s.party === 'nic' ? 'Nic' : 'Elly') + '</span> ' : ''; }
+  function partyName(p) { return p === 'nic' ? 'Nic' : 'Elly'; }
+  function partyTag(s) { return s.party && !N.partyMe() ? '<span class="who w-' + esc(s.party) + '">' + partyName(s.party) + '</span> ' : ''; }
   function ncRow(kind, s, day, st) {
     var other = day !== st.day, when = other ? T.dayWord(s.t) : '';
     var badge = kind === 'Next' ? (other ? '<span class="nc-badge nc-badge-q">' + esc(when) + '</span>' : '<span class="nc-badge">' + esc(until(s.t)) + '</span>') : '';
@@ -77,8 +78,8 @@
     var me = N.partyMe(); if (!me) return '';
     var other = me === 'nic' ? 'elly' : 'nic', theirs = (P.stops[st.day] || []).filter(function (x) { return x.party === other; });
     if (!theirs.length) return '';
-    var cn = N.curNext(theirs.filter(function (x) { return x.t != null; }).sort(function (a, b) { return a.t - b.t; }), st.t);
-    var x = cn.cur || cn.next || theirs[0], nm = other === 'nic' ? 'Nic' : 'Elly';
+    var cn = N.curNext(N.sortTimed(theirs), st.t);
+    var x = cn.cur || cn.next || theirs[0], nm = partyName(other);
     return '<a class="nc-other" href="#d' + st.day + '" data-jump="' + x.uid + '"><span class="who w-' + other + '">' + nm + '</span> ' + (cn.cur ? 'now' : 'next') + ' · ' + esc(x.stop.name) + ' <span class="nc-ot">' + esc(x.stop.time) + '</span></a>';
   }
   /* js/live.js (Firebase add-on) fills this: link status, Nic/Elly locations, trip alerts. */
