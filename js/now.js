@@ -1,6 +1,6 @@
 /* now: where are we in the trip. All maths in Japan time (fixed +09:00), never the device zone.
    Interface: Now.state() · Now.nextToday(st) · Now.timed(day) · Now.sortTimed(list) · Now.mine(day) · Now.curNext(list, t) · Now.over(s, t)
-   · Now.partyPick() / partyMe() · Now.bagInfo(day) · Now.leaveBy(st) · Now.navPick(st) · Now.navTarget(stop)
+   · Now.partyPick() / partyMe() · Now.bagInfo(day) · Now.leaveBy(st) · Now.leg(a, b) · Now.navPick(st) · Now.navTarget(stop)
    · Now.placeOf(stop) · Now.isPlannerMapLink(l) · Now.dirURL(p) · Now.deadlines(n) · Now.geo (last location fix) · Now.geoDenied(). */
 (function (T) {
   'use strict';
@@ -103,18 +103,29 @@
   N.leaveBy = function (st) {
     if (!N.nextToday(st) || st.next.t - now() > 4 * 3600e3) return null;
     var dest = placeOf(st.next.stop); if (!dest) return null;
-    var origin = null, from = '', GEO = N.geo;
+    var origin = null, from = '', GEO = N.geo, L = CFG.leaveBy;
+    var curP = st.cur && !R.isTrain(st.cur.stop) ? placeOf(st.cur.stop) : null;
     if (N.geoFresh() && km(GEO, dest) < 150) { origin = GEO; from = 'your location'; }
-    else if (st.cur && placeOf(st.cur.stop) && !R.isTrain(st.cur.stop)) { origin = placeOf(st.cur.stop); from = st.cur.stop.name; }
+    else if (curP) { origin = curP; from = st.cur.stop.name; }
     if (!origin) return null;
-    var L = CFG.leaveBy, d = km(origin, dest);
+    var d = km(origin, dest);
     if (d < 0.05) return null; // same place (e.g. head spa at the same salon) — nothing to leave for
-    var walk = d < L.walkMaxKm, est = Math.ceil(walk ? d / L.walkKmh * 60 : d / L.transitKmh * 60 + L.transitBufferMin);
+    // Precomputed door-to-door leg (current stop → next stop), when we're at or near the current stop.
+    var leg = curP && (origin === curP || km(origin, curP) <= (L.legNearKm || 0.4)) ? N.leg(st.cur.stop, st.next.stop) : null;
+    var walk = leg ? !(leg.lines && leg.lines.length) : d < L.walkMaxKm;
+    var est = leg ? Math.ceil(leg.min + (leg.transfers ? leg.transfers * (L.legTransferMin || 0) : 0))
+      : Math.ceil(walk ? d / L.walkKmh * 60 : d / L.transitKmh * 60 + L.transitBufferMin);
+    if (leg) from = st.cur.stop.name;
     var left = (st.next.t - now()) / 60000;
     if (est > 120) return null;
     var leaveAt = st.next.t - (est + L.extraBufferMin) * 60000;
     if (now() < leaveAt - 60 * 60000) return null;
-    return { km: d, est: est, walk: walk, from: from, go: left < est + L.extraBufferMin && left > -5, soon: leaveAt - now() < 30 * 60000, leaveAt: leaveAt };
+    return { km: d, est: est, walk: walk, from: from, leg: leg, go: left < est + L.extraBufferMin && left > -5, soon: leaveAt - now() < 30 * 60000, leaveAt: leaveAt };
+  };
+  /* Precomputed leg between two stops: {min, walkMin, transfers, lines[], board, source, computed} or null. */
+  N.leg = function (a, b) {
+    var l = (P.legs || {})[a.name + '→' + b.name];
+    return l && isFinite(+l.min) && +l.min > 0 ? l : null;
   };
   /* Which stop Navigate points at: next (today), else the next one with a destination, else now, else later today. */
   N.navPick = function (st) {

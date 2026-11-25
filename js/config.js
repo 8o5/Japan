@@ -11,7 +11,9 @@ window.APP_CONFIG = {
   weatherAutoDaysBefore: 14,
 
   /* Leave-by estimate (straight-line distance; deliberately conservative). */
-  leaveBy: { walkKmh: 4.5, walkMaxKm: 1.2, transitKmh: 20, transitBufferMin: 10, extraBufferMin: 10 },
+  leaveBy: { walkKmh: 4.5, walkMaxKm: 1.2, transitKmh: 20, transitBufferMin: 10, extraBufferMin: 10,
+    /* Precomputed legs (Plan.legs): trusted when the origin is the current stop or a GPS fix within legNearKm of it. */
+    legNearKm: 0.4, legTransferMin: 0 },
   notifyLeadMin: 30, /* default heads-up; each phone can change it in Trip alerts */
 
   /* Where the itinerary comes from.

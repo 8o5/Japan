@@ -1,11 +1,12 @@
 /* plan: the loaded plan. Planner text (data/trip.json, verbatim) + dated overrides + places, indexed by day.
    Interface: Plan.set(trip, overrides, places) · Plan.day(n) · Plan.panel(id) · Plan.dayLabel(d)
-   and the read-only fields trip, days, stops, flat, places, cities, confs. No DOM. */
+   and the read-only fields trip, days, stops, flat, places, cities, legs, confs.
+   legs = precomputed transit times keyed 'From stop→To stop' (tools/legs.py), shipped inside the places payload. No DOM. */
 (function (T) {
   'use strict';
   var P = T.plan = {
     trip: null, days: [], stops: {}, flat: {}, // stops[day] = [{uid, stop, party, ob, day, t(ms|null)}]; flat[day] = stops + routes in planner order
-    places: {}, cities: {}, overrides: [], confs: null
+    places: {}, cities: {}, legs: {}, overrides: [], confs: null
   };
 
   /* Accepts the whole overrides.json / places.json objects (static files or backend.loadTrip()), {} or a legacy
@@ -14,7 +15,7 @@
     P.trip = T.clone(trip);
     P.overrides = Array.isArray(overrides) ? overrides : ((overrides && overrides.overrides) || []);
     P.confs = (overrides && !Array.isArray(overrides) && overrides.confirmations) || null;
-    if (places && places.places) { P.places = places.places; P.cities = places.cities || P.cities || {}; }
+    if (places && places.places) { P.places = places.places; P.cities = places.cities || P.cities || {}; P.legs = places.legs || P.legs || {}; }
     else { P.places = places || P.places || {}; }
     applyOverrides(); index();
   };

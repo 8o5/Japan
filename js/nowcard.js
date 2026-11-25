@@ -110,7 +110,8 @@
   }
   function leaveHTML(lb) {
     return '<div class="leave' + (lb.go ? ' go' : lb.soon ? ' soon' : '') + '">' + (lb.go ? ic('🚶') + 'Time to head out' : ic('⏰') + 'Leave by ~' + esc(fmtJST(lb.leaveAt))) +
-      '<small>~' + lb.est + ' min ' + (lb.walk ? 'walk' : 'by transit') + ' · ' + lb.km.toFixed(1) + ' km from ' + esc(lb.from) + ' · app estimate</small></div>';
+      (lb.leg ? '<small>' + lb.est + ' min ' + (lb.walk ? 'walk' : (lb.leg.lines || []).map(esc).join(' → ')) + ' from ' + esc(lb.from) + (lb.leg.board ? ' · board at ' + esc(lb.leg.board) : '') + ' · planned route</small>'
+        : '<small>~' + lb.est + ' min ' + (lb.walk ? 'walk' : 'by transit') + ' · ' + lb.km.toFixed(1) + ' km from ' + esc(lb.from) + ' · rough estimate</small>') + '</div>';
   }
   /* "My location" follows the leave-by window: shown while leave-by shows, or (no known origin yet) once the next stop
      is within 90 min — the 60-min window plus a conservative trip. */
